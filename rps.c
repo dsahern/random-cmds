@@ -102,16 +102,44 @@ static int get_sched(pid_t pid, int *policy, int *prio, bool rt_only)
 	return 1;
 }
 
+static bool is_kernel_thread(pid_t pid)
+{
+	char fname[PATH_MAX];
+	char buf[8];
+	ssize_t len;
+	int fd;
+
+	if (snprintf(fname, sizeof(fname),
+		     "/proc/%d/maps", pid) >= sizeof(fname)) {
+		return false;
+	}
+
+	fd = open(fname, O_RDONLY);
+	if (fd < 0)
+		return false;
+
+	len = read(fd, buf, sizeof(buf));
+
+	close(fd);
+
+	return len == 0;
+}
+
 static void show_proc(pid_t pid, pid_t pid_main, int policy, int prio)
 {
 	const char *name = "";
 	const char *cpus = "";
 	const char *mem = "";
 	char fname[PATH_MAX];
+	char ktask = ' ';
 	char buf[8192];
 	ssize_t len;
 	int fd = -1;
 	char *nl;
+
+	if (pid == pid_main &&
+	    is_kernel_thread(pid))
+		ktask = '*';
 
 	if (snprintf(fname, sizeof(fname),
 		     "/proc/%d/status", pid) >= sizeof(fname)) {
@@ -131,6 +159,7 @@ static void show_proc(pid_t pid, pid_t pid_main, int policy, int prio)
 		fprintf(stderr, "failed to read status file for pid %d\n", pid);
 		goto out;
 	}
+	buf[len] = '\0';
 
 	name = strstr(buf, "Name:");
 	if (!name) {
@@ -185,8 +214,8 @@ out:
 	if (fd >= 0)
 		close(fd);
 
-	printf("%6d  %6d  %-20s  %12s  %4d  %16s  %16s\n",
-	       pid_main, pid, *name == '\0' ? "unknown" : name,
+	printf("%c %6d  %6d  %-20s  %12s  %4d  %16s  %16s\n",
+	       ktask, pid_main, pid, *name == '\0' ? "unknown" : name,
 	       policy_int2str(policy), prio, cpus, mem);
 }
 
@@ -239,7 +268,7 @@ int main(int argc, char *argv[])
 		return 1;
 	}
 
-	printf("%6s  %6s  %-20s  %12s  %4s  %16s  %16s\n",
+	printf("  %6s  %6s  %-20s  %12s  %4s  %16s  %16s\n",
 	       "PID", "LWP", "COMM", "POLICY", "PRIO", "CPU MASK", "MEM MASK");
 
 	while ((e = readdir(proc_dir)) != NULL)
