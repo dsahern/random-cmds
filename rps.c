@@ -125,7 +125,8 @@ static bool is_kernel_thread(pid_t pid)
 	return len == 0;
 }
 
-static void show_proc(pid_t pid, pid_t pid_main, int policy, int prio)
+static int show_proc(pid_t pid, pid_t pid_main, int policy, int prio,
+		      bool skip_kthreads)
 {
 	const char *name = "";
 	const char *cpus = "";
@@ -137,9 +138,12 @@ static void show_proc(pid_t pid, pid_t pid_main, int policy, int prio)
 	int fd = -1;
 	char *nl;
 
-	if (pid == pid_main &&
-	    is_kernel_thread(pid))
+	if (pid == pid_main && is_kernel_thread(pid)) {
+		if (skip_kthreads)
+			return 0;
+
 		ktask = '*';
+	}
 
 	if (snprintf(fname, sizeof(fname),
 		     "/proc/%d/status", pid) >= sizeof(fname)) {
@@ -217,18 +221,25 @@ out:
 	printf("%c %6d  %6d  %-20s  %12s  %4d  %16s  %16s\n",
 	       ktask, pid_main, pid, *name == '\0' ? "unknown" : name,
 	       policy_int2str(policy), prio, cpus, mem);
+
+	return 1;
 }
 
 static void print_usage(const char *prog)
 {
 	fprintf(stderr,
-		"usage: %s -r\n    -r   show only real-time processes\n", prog);
+		"usage: %s OPTS\n"
+		"\nOPTS\n"
+		"    -r   show only real-time processes\n"
+		"    -k   skip kernel threads\n"
+		, prog);
 }
 
 int main(int argc, char *argv[])
 {
 	const char *prog = basename(argv[0]);
-	bool real_time_only = 0;
+	bool real_time_only = false;
+	bool skip_kthreads = false;
 	unsigned int nproc = 0;
 	pid_t pid, pid_main;
 	const char *pid_str;
@@ -250,12 +261,14 @@ int main(int argc, char *argv[])
 		return 1;
 	}
 
-	while ((rc = getopt(argc, argv, ":r")) != -1) {
+	while ((rc = getopt(argc, argv, ":rk")) != -1) {
 		switch (rc) {
 		case 'r':
-			real_time_only = 1;
+			real_time_only = true;
 			break;
-
+		case 'k':
+			skip_kthreads = true;
+			break;
 		default:
 			print_usage(prog);
 			return 2;
@@ -287,10 +300,10 @@ int main(int argc, char *argv[])
 
 		task_dir = opendir(taskpath);
 		if (task_dir == NULL) {
-			if (get_sched(pid, &policy, &prio, real_time_only)) {
+			if (get_sched(pid, &policy, &prio, real_time_only) &&
+			    show_proc(pid, pid, policy, prio, skip_kthreads))
 				nproc++;
-				show_proc(pid, pid, policy, prio);
-			}
+
 			continue;
 		}
 
@@ -300,10 +313,9 @@ int main(int argc, char *argv[])
 			if (str_to_int(pid_str, 0, INT_MAX, &pid) != 0)
 				continue;
 
-			if (get_sched(pid, &policy, &prio, real_time_only)) {
+			if (get_sched(pid, &policy, &prio, real_time_only) &&
+			    show_proc(pid, pid_main, policy, prio, skip_kthreads))
 				nproc++;
-				show_proc(pid, pid_main, policy, prio);
-			}
 		}
 		closedir(task_dir);
 	}
