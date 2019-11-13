@@ -329,12 +329,6 @@ int main(int argc, char *argv[])
 	extern int optind, optopt;
 	extern char *optarg;
 
-	if ((getuid() != 0) && (geteuid() != 0)) {
-		fprintf(stderr,
-			"must run as root to retrieve scheduling parameters\n");
-		return 1;
-	}
-
 	while ((rc = getopt(argc, argv, ":rkmp:")) != -1) {
 		switch (rc) {
 		case 'r':
