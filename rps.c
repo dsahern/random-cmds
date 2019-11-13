@@ -24,6 +24,11 @@
 #include <libgen.h>
 #include <errno.h>
 
+static unsigned int nproc;
+static bool real_time_only;
+static bool skip_kthreads;
+static bool skip_threads;
+
 static int str_to_int(const char *str, int min, int max, int *value)
 {
 	int number;
@@ -125,6 +130,17 @@ static bool is_kernel_thread(pid_t pid)
 	return len == 0;
 }
 
+static void show_header(void)
+{
+	static bool doit = true;
+
+	if (doit) {
+		doit = false;
+		printf("  %6s  %6s  %-20s  %12s  %4s  %16s  %16s\n",
+		       "PID", "LWP", "COMM", "POLICY", "PRIO", "CPU MASK", "MEM MASK");
+	}
+}
+
 static int show_proc(pid_t pid, pid_t pid_main, int policy, int prio,
 		      bool skip_kthreads)
 {
@@ -218,6 +234,8 @@ out:
 	if (fd >= 0)
 		close(fd);
 
+	show_header();
+
 	printf("%c %6d  %6d  %-20s  %12s  %4d  %16s  %16s\n",
 	       ktask, pid_main, pid, *name == '\0' ? "unknown" : name,
 	       policy_int2str(policy), prio, cpus, mem);
@@ -225,34 +243,88 @@ out:
 	return 1;
 }
 
+static void walk_process(pid_t pid)
+{
+	char taskpath[PATH_MAX];
+	struct dirent *task_e;
+	DIR *task_dir = NULL;
+	pid_t pid_main = pid;
+	const char *pid_str;
+	int policy, prio;
+
+	if (snprintf(taskpath, sizeof(taskpath), 
+		     "/proc/%d/task", pid) >= sizeof(taskpath)) {
+		fprintf(stderr, "path too long for process %d\n", pid);
+		return;
+	}
+
+	if (!skip_threads)
+		task_dir = opendir(taskpath);
+
+	if (task_dir == NULL) {
+		if (get_sched(pid, &policy, &prio, real_time_only) &&
+		    show_proc(pid, pid, policy, prio, skip_kthreads))
+			nproc++;
+
+		return;
+	}
+
+	while ((task_e = readdir(task_dir)) != NULL) {
+		pid_str = task_e->d_name;
+		if (str_to_int(pid_str, 0, INT_MAX, &pid) != 0)
+			continue;
+
+		if (get_sched(pid, &policy, &prio, real_time_only) &&
+		    show_proc(pid, pid_main, policy, prio, skip_kthreads))
+			nproc++;
+	}
+	closedir(task_dir);
+}
+
+static void walk_proc(void)
+{
+	const char *pid_str;
+	struct dirent *e;
+	DIR *proc_dir;
+	pid_t pid = 0;
+
+	proc_dir = opendir("/proc");
+	if (proc_dir == NULL) {
+		perror("Cannot open /proc");
+		return;
+	}
+
+	while ((e = readdir(proc_dir)) != NULL)
+	{
+		pid_str = e->d_name;
+		if ((e->d_type != DT_DIR)  || !isdigit(*pid_str) ||
+		    (str_to_int(pid_str, 0, INT_MAX, &pid) != 0)) {
+			continue;
+		}
+
+		walk_process(pid);
+	}
+
+	closedir(proc_dir);
+}
+
 static void print_usage(const char *prog)
 {
 	fprintf(stderr,
 		"usage: %s OPTS\n"
 		"\nOPTS\n"
-		"    -r   show only real-time processes\n"
-		"    -k   skip kernel threads\n"
-		"    -m   show main thread only (skip threads)\n"
+		"    -r       show only real-time processes\n"
+		"    -k       skip kernel threads\n"
+		"    -m       show main thread only (skip threads)\n"
+		"    -p pid   show data for this pid only\n"
 		, prog);
 }
 
 int main(int argc, char *argv[])
 {
 	const char *prog = basename(argv[0]);
-	bool real_time_only = false;
-	bool skip_kthreads = false;
-	bool skip_threads = false;
-	unsigned int nproc = 0;
-	pid_t pid, pid_main;
-	const char *pid_str;
-	int policy, prio;
-	struct dirent *e;
-	DIR *proc_dir;
+	pid_t pid = 0;
 	
-	char taskpath[PATH_MAX];
-	struct dirent *task_e;
-	DIR *task_dir = NULL;
-
 	int rc;
 	extern int optind, optopt;
 	extern char *optarg;
@@ -263,7 +335,7 @@ int main(int argc, char *argv[])
 		return 1;
 	}
 
-	while ((rc = getopt(argc, argv, ":rkm")) != -1) {
+	while ((rc = getopt(argc, argv, ":rkmp:")) != -1) {
 		switch (rc) {
 		case 'r':
 			real_time_only = true;
@@ -274,60 +346,22 @@ int main(int argc, char *argv[])
 		case 'm':
 			skip_threads = true;
 			break;
+		case 'p':
+			if (str_to_int(optarg, 0, INT_MAX, &pid) != 0) {
+				fprintf(stderr, "Invalid pid\n");
+				return 1;
+			}
+			break;
 		default:
 			print_usage(prog);
 			return 2;
 		}
 	}
 
-	proc_dir = opendir("/proc");
-	if (proc_dir == NULL) {
-		perror("Cannot open /proc");
-		return 1;
-	}
-
-	printf("  %6s  %6s  %-20s  %12s  %4s  %16s  %16s\n",
-	       "PID", "LWP", "COMM", "POLICY", "PRIO", "CPU MASK", "MEM MASK");
-
-	while ((e = readdir(proc_dir)) != NULL)
-	{
-		pid_str = e->d_name;
-		if ((e->d_type != DT_DIR)  || !isdigit(*pid_str) ||
-		    (str_to_int(pid_str, 0, INT_MAX, &pid) != 0)) {
-			continue;
-		}
-	
-		if (snprintf(taskpath, sizeof(taskpath), 
-			     "/proc/%d/task", pid) >= sizeof(taskpath)) {
-			fprintf(stderr, "path too long for process %d\n", pid);
-			continue;
-		}
-
-		if (!skip_threads)
-			task_dir = opendir(taskpath);
-
-		if (task_dir == NULL) {
-			if (get_sched(pid, &policy, &prio, real_time_only) &&
-			    show_proc(pid, pid, policy, prio, skip_kthreads))
-				nproc++;
-
-			continue;
-		}
-
-		pid_main = pid;
-		while ((task_e = readdir(task_dir)) != NULL) {
-			pid_str = task_e->d_name;
-			if (str_to_int(pid_str, 0, INT_MAX, &pid) != 0)
-				continue;
-
-			if (get_sched(pid, &policy, &prio, real_time_only) &&
-			    show_proc(pid, pid_main, policy, prio, skip_kthreads))
-				nproc++;
-		}
-		closedir(task_dir);
-	}
-
-	closedir(proc_dir);
+	if (pid)
+		walk_process(pid);
+	else
+		walk_proc();
 
 	if (!nproc)
 		printf("     ***  no processes to show  ***\n");
