@@ -232,6 +232,7 @@ static void print_usage(const char *prog)
 		"\nOPTS\n"
 		"    -r   show only real-time processes\n"
 		"    -k   skip kernel threads\n"
+		"    -m   show main thread only (skip threads)\n"
 		, prog);
 }
 
@@ -240,6 +241,7 @@ int main(int argc, char *argv[])
 	const char *prog = basename(argv[0]);
 	bool real_time_only = false;
 	bool skip_kthreads = false;
+	bool skip_threads = false;
 	unsigned int nproc = 0;
 	pid_t pid, pid_main;
 	const char *pid_str;
@@ -249,7 +251,7 @@ int main(int argc, char *argv[])
 	
 	char taskpath[PATH_MAX];
 	struct dirent *task_e;
-	DIR *task_dir;
+	DIR *task_dir = NULL;
 
 	int rc;
 	extern int optind, optopt;
@@ -261,13 +263,16 @@ int main(int argc, char *argv[])
 		return 1;
 	}
 
-	while ((rc = getopt(argc, argv, ":rk")) != -1) {
+	while ((rc = getopt(argc, argv, ":rkm")) != -1) {
 		switch (rc) {
 		case 'r':
 			real_time_only = true;
 			break;
 		case 'k':
 			skip_kthreads = true;
+			break;
+		case 'm':
+			skip_threads = true;
 			break;
 		default:
 			print_usage(prog);
@@ -298,7 +303,9 @@ int main(int argc, char *argv[])
 			continue;
 		}
 
-		task_dir = opendir(taskpath);
+		if (!skip_threads)
+			task_dir = opendir(taskpath);
+
 		if (task_dir == NULL) {
 			if (get_sched(pid, &policy, &prio, real_time_only) &&
 			    show_proc(pid, pid, policy, prio, skip_kthreads))
