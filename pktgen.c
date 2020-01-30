@@ -236,7 +236,7 @@ static int get_ifindex(int sd, const char *ifname)
     struct ifreq ifdata;
 
     memset(&ifdata, 0, sizeof(ifdata));
-    strncpy(ifdata.ifr_name, ifname, IFNAMSIZ);
+    strcpy(ifdata.ifr_name, ifname);
 
     if (ioctl(sd, SIOCGIFINDEX, (char *)&ifdata) != 0) {
 	log_err_errno("ioctl(SIOCGIFINDEX) failed");
@@ -392,6 +392,7 @@ static int arp_create(void *buf, int len, int msglen)
  */
 
 struct {
+	__u8		synflood;
 	__u8		protocol;
 	__u8		malformed;
 	__u8		fragments;
@@ -406,6 +407,7 @@ static void ipv4_usage(void)
 	"  -s addr       Source address\n"
 	"  -d addr       Destination address\n"
 	"  -t            TCP transport protocol\n"
+	"  -S            TCP syn packets only\n"
 	"  -u            UDP transport protocol\n"
 	"  -M            Generate multicast destination addresses\n"
 	"  -f            IPv4 fragments\n"
@@ -420,7 +422,7 @@ static int ipv4_parse(int argc, char *argv[])
 
 	extern char *optarg;
 
-	while ((rc = getopt(argc, argv, "hms:d:tufM")) != -1) {
+	while ((rc = getopt(argc, argv, "hms:d:tufMS")) != -1) {
 		switch(rc) {
 		case 's':
 			if (str_to_ip(optarg, &ipv4_opts.sip) != 0) {
@@ -433,6 +435,10 @@ static int ipv4_parse(int argc, char *argv[])
 				log_error("Invalid destination IP address\n");
 				return -1;
 			}
+			break;
+		case 'S':
+			ipv4_opts.protocol = IPPROTO_TCP;
+			ipv4_opts.synflood = 1;
 			break;
 		case 't':
 			ipv4_opts.protocol = IPPROTO_TCP;
@@ -507,7 +513,6 @@ static void fill_udp_hdr(struct iphdr *iph, unsigned int len)
 static void fill_tcp_hdr(struct iphdr *iph, unsigned int len)
 {
 	struct tcphdr *tcph = (struct tcphdr *)(iph + 1);
-	__u16 flags = random() & 0xFFFF;
 
 	tcph->source  = htons(random() & 0xFFFF ? : 6666);
 	tcph->dest    = htons(random() & 0xFFFF ? : 9999);
@@ -516,21 +521,37 @@ static void fill_tcp_hdr(struct iphdr *iph, unsigned int len)
 
 	tcph->doff = sizeof(*tcph) >> 2;
 
-	tcph->syn = flags & 3 ? 1 : 0;
-	if (!tcph->syn && (flags & (3 << 2)))
-		tcph->fin = 1;
-	else
-		tcph->fin = 0;
+	/* start at all 0 */
+	tcph->res1 = 0;
+#if 0
+	tcph->cwr = 0;
+	tcph->ece = 0;
+#else
+	tcph->res2 = 0;
+#endif
+	tcph->urg = 0;
+	tcph->ack = 0;
+	tcph->psh = 0;
+	tcph->rst = 0;
+	tcph->syn = 0;
+	tcph->fin = 0;
 
-	if (!tcph->syn && !tcph->fin && (flags & (3 << 4)))
-		tcph->rst = 1;
-	else
-		tcph->rst = 0;
+	if (ipv4_opts.synflood) {
+		tcph->syn = 1;
+	} else {
+		__u16 flags = random() & 0xFFFF;
 
-	if (flags & 0x00ff0000)
-		tcph->ack = 1;
-	if (flags & 0xff000000)
-		tcph->psh = 1;
+		tcph->syn = flags & 3 ? 1 : 0;
+		if (!tcph->syn && (flags & (3 << 2)))
+			tcph->fin = 1;
+
+		if (!tcph->syn && !tcph->fin && (flags & (3 << 4)))
+			tcph->rst = 1;
+		if (flags & 0x00ff0000)
+			tcph->ack = 1;
+		if (flags & 0xff000000)
+			tcph->psh = 1;
+	}
 
 	tcph->window = htons(5840); /* htons(0x7FFF); */
 	tcph->urg_ptr = 0;
@@ -749,7 +770,7 @@ static int parse_args(int argc, char *argv[], struct opts *opts)
 		}
 	}
 	if (opts->proto == NULL) {
-		log_error("protcol not specified\n");
+		log_error("protocol not specified\n");
 		return 1;
 	}
 	optind++;
