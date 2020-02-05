@@ -1,0 +1,121 @@
+#!/bin/bash
+#
+# objdump wrapper
+#
+# David Ahern <dsahern@gmail.com>
+
+OBJDUMP=/usr/bin/objdump
+NM=/usr/bin/nm
+
+usage()
+{
+    cat <<EOF
+usage: ${0##*/} OPTS file
+
+    -a addr      address to run objdump
+    -m addr      base address where dso is mapped
+    -o offset    DSO offset to run objdump
+    -s symbol    symbol of interest (nm to look up addr)
+    -S           add source option (-S) to objdump
+
+examples:
+    ${0##*/} -s symbol  file
+    - objdump run starting at address of symbol
+
+    ${0##*/} -s symbol -o offset-within-symbol  file
+    - objdump run starting at address of symbol + offset
+
+    ${0##*/} -a addr   file
+    - objdump run starting at addr
+
+    ${0##*/} -a addr -m base_addr  file
+    - objdump run for addr - map_start
+
+EOF
+}
+
+
+# take a string like this: __skb_recv_datagram+0x14a/0x3f3
+# and extract the symbol and offset
+function parse_sym
+{
+    OIFS=$IFS
+    IFS='+/ '
+    set $1
+    IFS=$OIFS
+
+    sym=$1
+    [ -n "$2" ] && offset=$2
+}
+
+############################################################
+# input sanity
+
+file=
+sym=
+offset=0
+map_start=0
+addr=0
+OBJ_OPTS="-rld"
+
+if [ -e "${1}" ]; then
+	file=$1
+	shift
+fi
+
+while getopts :s:o:m:a:S o
+do
+    case $o in
+        a) addr=$OPTARG;;
+        m) map_start=$OPTARG;;
+        s) parse_sym $OPTARG;;
+        o) offset=$OPTARG;;
+        S) OBJ_OPTS="$OBJ_OPTS -S";;
+        *) usage; exit 1;;
+    esac
+done
+shift $(($OPTIND-1))
+[ -z "$file" ] && file=$1
+
+if [ -z "$file" ]
+then
+    usage
+    exit 1
+elif [ "$addr" != "0" -a -n "$sym" ]
+then
+    usage
+    exit 1
+elif [ "$addr" = "0" -a -z "$sym" ]
+then
+    usage
+    exit 1
+fi
+
+if [ ! -e $file ]
+then
+    echo "file does not exist"
+    exit 1
+fi
+
+############################################################
+# find start address to run objdump
+
+if [ -n "$sym" ]
+then
+    saddr=$($NM $file | awk -v sym=${sym} '$3 == sym {print $1}')
+    if [ -z "$saddr" ]
+    then
+        echo "failed to find address for symbol"
+        exit 1
+    fi
+    saddr=0x${saddr}
+    addr=$(($saddr + $offset))
+else
+    addr=$(($addr - $map_start))
+fi
+addr=$(printf "%x" $addr)
+
+############################################################
+# do it
+
+$OBJDUMP $OBJ_OPTS --start-address=0x${addr} ${file} | less
