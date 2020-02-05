@@ -44,6 +44,7 @@
 #include <time.h>
 #include <unistd.h>
 #include <inttypes.h>
+#include <pthread.h>
 #include <errno.h>
 
 #define __packed	__attribute__((__packed__))
@@ -231,17 +232,26 @@ static int link_socket(void)
 }
 
 
-static int get_ifindex(int sd, const char *ifname)
+static int get_ifindex(const char *ifname)
 {
-    struct ifreq ifdata;
+	int sd = link_socket();
+	struct ifreq ifdata;
+	int rc;
 
-    memset(&ifdata, 0, sizeof(ifdata));
-    strcpy(ifdata.ifr_name, ifname);
+	if (sd < 0) {
+		log_err_errno("Failed to get packet socket\n");
+		return -1;
+	}
 
-    if (ioctl(sd, SIOCGIFINDEX, (char *)&ifdata) != 0) {
-	log_err_errno("ioctl(SIOCGIFINDEX) failed");
-	return -1;
-    }
+	memset(&ifdata, 0, sizeof(ifdata));
+	strcpy(ifdata.ifr_name, ifname);
+
+	rc = ioctl(sd, SIOCGIFINDEX, (char *)&ifdata);
+	close(sd);
+	if (rc != 0) {
+		log_err_errno("ioctl(SIOCGIFINDEX) failed");
+		return -1;
+	}
 
 	return ifdata.ifr_ifindex;
 }
@@ -639,6 +649,7 @@ static void main_usage(void)
 	"  -l len      length of message to send\n"
 	"  -P num      pause every num packets (default no pause)\n"
 	"  -D delay    usec to pause every num packets (default is %d)\n"
+	"  -N num      spawn num threads each generating packets based on config (default is 1)\n"
 	"\n"
 	"  protocol    protocol packet to send.\n\n"
 	"Valid protocols:", DEFLT_PAUSE_DELAY);
@@ -653,6 +664,7 @@ static void main_usage(void)
 
 struct opts {
 	const char *ifname;   /* interface to send messages */
+	int ifidx;
 
 	int msglen;
 	int nmsgs;            /* number of messages to send */
@@ -662,9 +674,11 @@ struct opts {
 	struct protocol *proto;
 
 	__u16 vlan;
+	__u16 nthreads;
 
 	int srcmac_set;
 	unsigned char srcmac[ETH_ALEN];
+	unsigned char *smac_array;
 
 	int dstmac_set;
 	unsigned char dstmac[ETH_ALEN];
@@ -677,7 +691,7 @@ static int parse_main_args(int argc, char *argv[], struct opts *opts)
 
 	while (1)
 	{
-		rc = getopt(argc, argv, "hi:n:d:s:v:P:D:l:V");
+		rc = getopt(argc, argv, "hi:n:d:s:v:P:D:l:VN:");
 		if (rc < 0) break;
 		switch(rc)
 		{
@@ -728,6 +742,13 @@ static int parse_main_args(int argc, char *argv[], struct opts *opts)
 				log_error("invalid pause time\n");
 				return -1;
 			}
+			break;
+		case 'N':
+			if (str_to_int(optarg, 1, 64, &tmp, 0) != 0) {
+				log_error("invalid number of threads (1-64)\n");
+				return -1;
+			}
+			opts->nthreads = tmp;
 			break;
 		case 'V':
 			debug++;
@@ -797,69 +818,32 @@ static int parse_args(int argc, char *argv[], struct opts *opts)
 	return 0;
 }
 
-int main(int argc, char *argv[])
+static void gen_packets(struct opts *opts)
 {
 	unsigned char buf[1000];
 	struct ethhdr *ethhdr;
 	int hlen = sizeof(*ethhdr);
-	struct protocol *proto;
 	struct sockaddr_ll ll_addr;
+	struct protocol *proto;
 	int sent_count = 0;
-	int ifidx, rc, sd;
-	int proto_len;
-	struct opts opts = {
-		.pause_delay = DEFLT_PAUSE_DELAY,
-		.nmsgs = 1,
-		.msglen = 64,
-	};
-	unsigned char *smac_array = NULL;
-	int ismac = 0;
+	int rc, sd;
 
-	srandom(time(NULL));
-
-	if (parse_args(argc, argv, &opts) != 0)
-		return 1;
-
-	proto = opts.proto;
-	if (opts.srcmac_set == 0) {
-		if (debug)
-			printf("Generating array of source macs\n");
-
-		smac_array = malloc(MAX_SRC_MAC * ETH_ALEN);
-		for (ismac = 0; ismac < MAX_SRC_MAC; ++ismac)
-			random_mac(smac_array + ismac * ETH_ALEN);
-
-		/* assign entry 0 */
-		memcpy(opts.srcmac, smac_array, ETH_ALEN);
-
-		ismac = 1; /* used later */
-	}
-
-	if (opts.dstmac_set == 0)
-		random_mac(opts.dstmac);
+	proto = opts->proto;
 
 	sd = link_socket();
 	if (sd < 0) {
 		log_err_errno("socket failed");
-		return 1;
+		return;
 	}
-
-	if (opts.ifname == NULL) {
-		printf("egress interface not specified\n");
-		return 1;
-	}
-	ifidx = get_ifindex(sd, opts.ifname);
-	if (ifidx < 0)
-		return 1;
 
 	ethhdr = (struct ethhdr *) buf;
-	memcpy(ethhdr->h_source, opts.srcmac, ETH_ALEN);
-	memcpy(ethhdr->h_dest,   opts.dstmac, ETH_ALEN);
-	if (opts.vlan) {
+	memcpy(ethhdr->h_source, opts->srcmac, ETH_ALEN);
+	memcpy(ethhdr->h_dest,   opts->dstmac, ETH_ALEN);
+	if (opts->vlan) {
 		struct vlan_ethhdr *vehdr = (struct vlan_ethhdr *)buf;
 
 		vehdr->h_vlan_proto = htons(ETHERTYPE_VLAN);
-		vehdr->h_vlan_TCI = htons(opts.vlan);
+		vehdr->h_vlan_TCI = htons(opts->vlan);
 		vehdr->h_vlan_encapsulated_proto = htons(proto->id);
 
 		hlen = sizeof(*vehdr);
@@ -869,29 +853,33 @@ int main(int argc, char *argv[])
 
 	ll_addr.sll_family   = PF_PACKET;
 	ll_addr.sll_protocol = ethhdr->h_proto;
-	ll_addr.sll_ifindex  = ifidx;
+	ll_addr.sll_ifindex  = opts->ifidx;
 	ll_addr.sll_hatype   = htons(proto->hatype);
 	ll_addr.sll_pkttype  = PACKET_OTHERHOST;
 	ll_addr.sll_halen    = ETH_ALEN;
-	memcpy(ll_addr.sll_addr, opts.dstmac, ETH_ALEN);
+	memcpy(ll_addr.sll_addr, opts->dstmac, ETH_ALEN);
 
 	log_msg("sending message ...");
 	while (1) {
-		if (opts.srcmac_set == 0) {
-			memcpy(ethhdr->h_source, smac_array + ismac * ETH_ALEN,
+		int proto_len;
+		int ismac = 1;
+
+		if (opts->srcmac_set == 0) {
+			memcpy(ethhdr->h_source,
+			       opts->smac_array + ismac * ETH_ALEN,
 			       ETH_ALEN);
-			print_mac(smac_array + ismac * ETH_ALEN,
+			print_mac(opts->smac_array + ismac * ETH_ALEN,
 				  "source addr");
 			ismac++;
 			if (ismac >= MAX_SRC_MAC)
 				ismac = 0;
 		}
 
-		if (opts.dstmac_set == 0)
+		if (opts->dstmac_set == 0)
 			random_mac(ethhdr->h_dest);
 
 		proto_len = proto->create(buf + hlen, sizeof(buf) - hlen,
-					  opts.msglen);
+					  opts->msglen);
 		if (proto_len <= 0) /* < 0 = err, == 0 means done */
 			break;
 
@@ -900,22 +888,118 @@ int main(int argc, char *argv[])
 		if (rc < 0) {
 			log_msg("failed!\n");
 			log_err_errno("send failed");
-			return 1;
+			break;
 		}
 
 		sent_count++;
-		if (opts.nmsgs && (sent_count >= opts.nmsgs))
+		if (opts->nmsgs && (sent_count >= opts->nmsgs))
 			break;
 
 		/* take a breather so as to not overwhelm the netdevice
 		 * (overrun stat)
 		 */
-		if (opts.pause_count && (sent_count % opts.pause_count == 0))
-			usleep(opts.pause_delay);
+		if (opts->pause_count && (sent_count % opts->pause_count == 0))
+			usleep(opts->pause_delay);
 	}
+
+	close(sd);
+}
+
+static void *thread_gen_packets(void *arg)
+{
+	gen_packets(arg);
+
+	return NULL;
+}
+
+static void do_threads(struct opts *opts)
+{
+	pthread_attr_t attr;
+	pthread_t *id;
+	int i;
+
+	id = calloc(opts->nthreads, sizeof(*id));
+	if (!id) {
+		log_err_errno("calloc failed");
+		return;
+	}
+
+	if (pthread_attr_init(&attr) != 0) {
+		log_err_errno("pthread_attr_init failed");
+		return;
+	}
+
+	for (i = 0; i < opts->nthreads; ++i) {
+		int rc;
+
+		rc = pthread_create(&id[i], &attr, thread_gen_packets, opts);
+		if (rc) {
+			log_error("pthread_create failed for thread %d: err %d\n",
+				  i, rc);
+			break;
+		}
+	}
+
+	pthread_attr_destroy(&attr);
+
+	for (i = 0; i < opts->nthreads; ++i) {
+		void *rc;
+
+		if (id[i] > 0)
+			pthread_join(id[i], &rc);
+	}
+
+	free(id);
+}
+
+int main(int argc, char *argv[])
+{
+	struct opts opts = {
+		.pause_delay = DEFLT_PAUSE_DELAY,
+		.nmsgs = 1,
+		.msglen = 64,
+		.nthreads = 1,
+	};
+
+	srandom(time(NULL));
+
+	if (parse_args(argc, argv, &opts) != 0)
+		return 1;
+
+	if (opts.srcmac_set == 0) {
+		int ismac = 0;
+
+		if (debug)
+			printf("Generating array of source macs\n");
+
+		opts.smac_array = malloc(MAX_SRC_MAC * ETH_ALEN);
+		for (ismac = 0; ismac < MAX_SRC_MAC; ++ismac)
+			random_mac(opts.smac_array + ismac * ETH_ALEN);
+
+		/* assign entry 0 */
+		memcpy(opts.srcmac, opts.smac_array, ETH_ALEN);
+	}
+
+	if (opts.dstmac_set == 0)
+		random_mac(opts.dstmac);
+
+	if (opts.ifname == NULL) {
+		printf("egress interface not specified\n");
+		return 1;
+	}
+
+	opts.ifidx = get_ifindex(opts.ifname);
+	if (opts.ifidx < 0)
+		return 1;
+
+	if (opts.nthreads > 1)
+		do_threads(&opts);
+	else
+		gen_packets(&opts);
+
 	log_msg("done\n");
 
-	free(smac_array);
+	free(opts.smac_array);
 
 	return 0;
 }

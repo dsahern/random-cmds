@@ -9,5 +9,8 @@ all: rps pktgen
 %: %.c
 	$(CC) $(DEFS) $(CFLAGS) $(LDFLAGS) $< -o $@
 
+pktgen: pktgen.c
+	$(CC) $(DEFS) $(CFLAGS) $(LDFLAGS) $< -o $@ -lpthread
+
 clean:
 	@rm -rf rps rps.o pktgen pktgen.o
