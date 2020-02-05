@@ -1,16 +1,12 @@
 
-CC = gcc
-LD = ld
-CFLAGS = -O2 -g -Wall
-LDFLAGS = -static
+SUBDIRS = src
 
-all: rps pktgen
-
-%: %.c
-	$(CC) $(DEFS) $(CFLAGS) $(LDFLAGS) $< -o $@
-
-pktgen: pktgen.c
-	$(CC) $(DEFS) $(CFLAGS) $(LDFLAGS) $< -o $@ -lpthread
+all:
+	for s in $(SUBDIRS); do \
+		make -C $$s all; \
+	done
 
 clean:
-	@rm -rf rps rps.o pktgen pktgen.o
+	for s in $(SUBDIRS); do \
+		make -C $$s clean; \
+	done
