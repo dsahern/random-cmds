@@ -8,12 +8,12 @@ export LC_NUMERIC=""
 
 show_header()
 {
-	printf "Stats for ${DEV} over last ${DT} seconds\n"
 	printf "\n"
+	printf "Stats for ${DEV}\n"
 	printf "%8s "   "Time"
-	printf "Rx: %11s   %7s   %6s   %5s"  "Bps" "pps" "avg-sz" "drops"
+	printf "Rx: %11s   %7s   %6s   %5s"  "bytes/s" "pkt/s" "avg-sz" "drp/s"
 	printf "    "
-	printf "Tx: %11s   %7s   %6s   %5s"  "Bps" "pps" "avg-sz" "drops"
+	printf "Tx: %11s   %7s   %6s   %5s"  "bytes/s" "pkt/s" "avg-sz" "drp/s"
 	printf "\n"
 }
 
@@ -77,9 +77,10 @@ while [ 1 ]; do
 		k=64
 	fi
 	printf "%8s " $T
-	printf "Rx: %'11d   %'7d   %'6d   %'5d"   $((${rbytes}/${DT})) $((${rpkts}/${DT})) ${rpktsz} ${rdrop}
+	printf "Rx: %'11d   %'7d   %'6d   %'5d" \
+		$((${rbytes}/${DT})) $((${rpkts}/${DT})) ${rpktsz} $((${rdrop}/${DT}))
 	printf "    "
-	printf "Tx: %'11d   %'7d   %'6d   %'5d"   $((${tbytes}/${DT})) $((${tpkts}/${DT})) ${tpktsz} ${tdrop}
+	printf "Tx: %'11d   %'7d   %'6d   %'5d"   $((${tbytes}/${DT})) $((${tpkts}/${DT})) ${tpktsz} $((${tdrop}/${DT}))
 	printf "\n"
 
 	if [ ${ITER} -gt 0 ]; then
