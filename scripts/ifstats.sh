@@ -6,20 +6,46 @@
 
 export LC_NUMERIC=""
 
+RX_DESC="Rx"
+TX_DESC="Tx"
+
 show_header()
 {
 	printf "\n"
 	printf "Stats for ${DEV}\n"
 	printf "%8s "   "Time"
-	printf "Rx: %11s   %7s   %6s   %5s"  "bytes/s" "pkt/s" "avg-sz" "drp/s"
+	printf "%s: %11s   %7s   %6s   %5s"  \
+		"${RX_DESC}" "bytes/s" "pkt/s" "avg-sz" "drp/s"
 	printf "    "
-	printf "Tx: %11s   %7s   %6s   %5s"  "bytes/s" "pkt/s" "avg-sz" "drp/s"
+	printf "%s: %11s   %7s   %6s   %5s"  \
+		"${TX_DESC}" "bytes/s" "pkt/s" "avg-sz" "drp/s"
 	printf "\n"
+}
+
+set_desc()
+{
+	local d=$1
+	local out
+
+	out=$(ip -o li sh dev ${d} type tun 2>/dev/null)
+	if [ $? -ne 0 ]
+	then
+		echo "Invalid device"
+		exit 1
+	fi
+
+	if [ -n "${out}" ]
+	then
+		# tap devices for VMs are backwards
+		RX_DESC="from-VM"
+		TX_DESC="to-VM"
+	fi
 }
 
 
 DEV=${1}
 [ -z $DEV ] && DEV=eth0
+set_desc $DEV
 
 DT=${2}
 [ -z "${DT}" -o "${DT}"  = "0" ] && DT=1
@@ -77,10 +103,11 @@ while [ 1 ]; do
 		k=64
 	fi
 	printf "%8s " $T
-	printf "Rx: %'11d   %'7d   %'6d   %'5d" \
-		$((${rbytes}/${DT})) $((${rpkts}/${DT})) ${rpktsz} $((${rdrop}/${DT}))
+	printf "%s: %'11d   %'7d   %'6d   %'5d" \
+		"${RX_DESC}" $((${rbytes}/${DT})) $((${rpkts}/${DT})) ${rpktsz} $((${rdrop}/${DT}))
 	printf "    "
-	printf "Tx: %'11d   %'7d   %'6d   %'5d"   $((${tbytes}/${DT})) $((${tpkts}/${DT})) ${tpktsz} $((${tdrop}/${DT}))
+	printf "%s: %'11d   %'7d   %'6d   %'5d" \
+		"${TX_DESC}" $((${tbytes}/${DT})) $((${tpkts}/${DT})) ${tpktsz} $((${tdrop}/${DT}))
 	printf "\n"
 
 	if [ ${ITER} -gt 0 ]; then
