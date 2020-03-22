@@ -27,13 +27,14 @@ set_desc()
 	local d=$1
 	local out
 
-	out=$(ip -o li sh dev ${d} type tun 2>/dev/null)
+	ip -o li sh dev ${d} >/dev/null 2>&1
 	if [ $? -ne 0 ]
 	then
 		echo "Invalid device"
 		exit 1
 	fi
 
+	out=$(ip -o li sh dev ${d} 2>/dev/null)
 	if [ -n "${out}" ]
 	then
 		# tap devices for VMs are backwards
