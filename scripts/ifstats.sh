@@ -34,7 +34,7 @@ set_desc()
 		exit 1
 	fi
 
-	out=$(ip -o li sh dev ${d} 2>/dev/null)
+	out=$(ip -o li sh dev ${d} | grep tun)
 	if [ -n "${out}" ]
 	then
 		# tap devices for VMs are backwards
