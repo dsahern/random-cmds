@@ -517,7 +517,7 @@ static void fill_udp_hdr(struct iphdr *iph, unsigned int len)
 	udph->len    = htons(len);
 	udph->check  = 0;
 	udph->check = tcpudp_csum(iph->saddr, iph->daddr, IPPROTO_UDP,
-				  (const unsigned char *)udph, len);
+				  (const unsigned char *)udph, sizeof(*udph));
 }
 
 static void fill_tcp_hdr(struct iphdr *iph, unsigned int len)
@@ -567,7 +567,7 @@ static void fill_tcp_hdr(struct iphdr *iph, unsigned int len)
 	tcph->urg_ptr = 0;
 	tcph->check = 0;
 	tcph->check = tcpudp_csum(iph->saddr, iph->daddr, IPPROTO_TCP,
-				   (const unsigned char *)tcph, len);
+				   (const unsigned char *)tcph, sizeof(*tcph));
 }
 
 static int ipv4_create(void *buf, int len, int msglen)
@@ -820,7 +820,7 @@ static int parse_args(int argc, char *argv[], struct opts *opts)
 
 static void gen_packets(struct opts *opts)
 {
-	unsigned char buf[1000];
+	unsigned char buf[9000];
 	struct ethhdr *ethhdr;
 	int hlen = sizeof(*ethhdr);
 	struct sockaddr_ll ll_addr;
