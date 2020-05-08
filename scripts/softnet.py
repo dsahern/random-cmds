@@ -14,7 +14,7 @@ ncpu = multiprocessing.cpu_count()
 
 prev = [ [0 for i in range(6)] for j in range(ncpu) ]
 curr = [ [0 for i in range(6)] for j in range(ncpu) ]
-delta = [ [0 for i in range(6)] for j in range(ncpu) ]
+delta = [ [0 for i in range(7)] for j in range(ncpu) ]
 
 def read_softnet( f ):
     cpu = 0
@@ -34,8 +34,10 @@ def read_softnet( f ):
 
 def compute_delta( ):
     for cpu in range(ncpu):
+        delta[cpu][6] = 0
         for j in range(6):
             delta[cpu][j] = curr[cpu][j] - prev[cpu][j]
+            delta[cpu][6] += delta[cpu][j]
 
 
 def rotate_data( ):
@@ -61,8 +63,11 @@ def print_delta( now ):
           ("cpu", "total", "dropped", "squeezed", "rps", "flow_lmt"))
 
     for cpu in range(ncpu):
-        print("%3u  %10u  %10u  %10u  %10u  %10u" % \
-              (cpu, delta[cpu][0], delta[cpu][1], delta[cpu][2], delta[cpu][4], delta[cpu][5]))
+        if skip_zero == 0:
+            delta[cpu][6] = 1
+        if delta[cpu][6] > 0:
+            print("%3u  %10u  %10u  %10u  %10u  %10u" % \
+                  (cpu, delta[cpu][0], delta[cpu][1], delta[cpu][2], delta[cpu][4], delta[cpu][5]))
 
 
 def print_delta_cpu(cpu, now):
@@ -73,6 +78,7 @@ def print_delta_cpu(cpu, now):
 
 ################################################################################
 
+skip_zero = 0
 show_delta = 0
 show_cpu = -1
 dt = 1
@@ -82,6 +88,8 @@ parser.add_argument("--cpu", type=int, nargs=1,
                     help='show stats only for this cpu')
 parser.add_argument("--delta", action='store_true',
                     help='show delta stats')
+parser.add_argument("--skip-zero", action='store_true',
+                    help='skip zero rows')
 parser.add_argument("--dt", type=int, nargs=1,
                     help='sampling rate (default 1 sec)')
 args = parser.parse_args()
@@ -97,6 +105,9 @@ if args.cpu:
 
 if args.delta:
     show_delta = 1
+
+if args.skip_zero:
+    skip_zero = 1
 
 if args.dt:
     dt = args.dt[0]
