@@ -409,6 +409,8 @@ struct {
 	__u8		mcast;
 	__be32		sip;
 	__be32		dip;
+	__be16		sport;
+	__be16		dport;
 } ipv4_opts;
 
 static void ipv4_usage(void)
@@ -419,6 +421,8 @@ static void ipv4_usage(void)
 	"  -t            TCP transport protocol\n"
 	"  -S            TCP syn packets only\n"
 	"  -u            UDP transport protocol\n"
+	"  -p            destination port\n"
+	"  -P            source port\n"
 	"  -M            Generate multicast destination addresses\n"
 	"  -f            IPv4 fragments\n"
 	"  -m            Create malformed IPv4 packets\n"
@@ -428,11 +432,11 @@ static void ipv4_usage(void)
 
 static int ipv4_parse(int argc, char *argv[])
 {
-	int rc;
+	int rc, val;
 
 	extern char *optarg;
 
-	while ((rc = getopt(argc, argv, "hms:d:tufMS")) != -1) {
+	while ((rc = getopt(argc, argv, "hms:d:p:P:tufMS")) != -1) {
 		switch(rc) {
 		case 's':
 			if (str_to_ip(optarg, &ipv4_opts.sip) != 0) {
@@ -445,6 +449,20 @@ static int ipv4_parse(int argc, char *argv[])
 				log_error("Invalid destination IP address\n");
 				return -1;
 			}
+			break;
+		case 'p':
+			if (str_to_int(optarg, 1, 0xffff, &val, 10)) {
+				log_error("Invalid destination port\n");
+				return -1;
+			}
+			ipv4_opts.dport = htons(val);
+			break;
+		case 'P':
+			if (str_to_int(optarg, 1, 0xffff, &val, 10)) {
+				log_error("Invalid source port\n");
+				return -1;
+			}
+			ipv4_opts.sport = htons(val);
 			break;
 		case 'S':
 			ipv4_opts.protocol = IPPROTO_TCP;
@@ -512,8 +530,17 @@ static void fill_udp_hdr(struct iphdr *iph, unsigned int len)
 {
 	struct udphdr *udph = (struct udphdr *)(iph + 1);
 
-	udph->source = htons(random() & 0xFFFF ? : 6666);
-	udph->dest   = htons(random() & 0xFFFF ? : 9999);
+
+	if (ipv4_opts.sport)
+		udph->source  = ipv4_opts.sport;
+	else
+		udph->source = htons(random() & 0xFFFF ? : 6666);
+
+	if (ipv4_opts.dport)
+		udph->dest    = ipv4_opts.dport;
+	else
+		udph->dest   = htons(random() & 0xFFFF ? : 9999);
+
 	udph->len    = htons(len);
 	udph->check  = 0;
 	udph->check = tcpudp_csum(iph->saddr, iph->daddr, IPPROTO_UDP,
@@ -524,8 +551,16 @@ static void fill_tcp_hdr(struct iphdr *iph, unsigned int len)
 {
 	struct tcphdr *tcph = (struct tcphdr *)(iph + 1);
 
-	tcph->source  = htons(random() & 0xFFFF ? : 6666);
-	tcph->dest    = htons(random() & 0xFFFF ? : 9999);
+	if (ipv4_opts.sport)
+		tcph->source  = ipv4_opts.sport;
+	else
+		tcph->source  = htons(random() & 0xFFFF ? : 6666);
+
+	if (ipv4_opts.dport)
+		tcph->dest    = ipv4_opts.dport;
+	else
+		tcph->dest    = htons(random() & 0xFFFF ? : 9999);
+
 	tcph->seq     = htonl(random() & 0xFFFFFFFF ? : 12345);
 	tcph->ack_seq = htonl(random() & 0xFFFFFFFF ? : 12346);
 
