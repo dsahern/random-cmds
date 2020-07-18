@@ -609,7 +609,7 @@ static int ipv4_create(void *buf, int len, int msglen)
 {
 	struct iphdr *iph = buf;
 	unsigned int hlen = sizeof(*iph);
-	unsigned int tot_len = hlen + msglen;
+	unsigned int tot_len = msglen;
 
 	iph->version = 4;
 	iph->ihl     = hlen >> 2;
@@ -633,10 +633,12 @@ static int ipv4_create(void *buf, int len, int msglen)
 
 	iph->tot_len = htons(tot_len);
 
-	if (iph->protocol == IPPROTO_TCP)
-		fill_tcp_hdr(iph, msglen);
-	else if (iph->protocol == IPPROTO_UDP)
-		fill_udp_hdr(iph, msglen);
+	if (msglen > hlen) {
+		if (iph->protocol == IPPROTO_TCP)
+			fill_tcp_hdr(iph, msglen - hlen);
+		else if (iph->protocol == IPPROTO_UDP)
+			fill_udp_hdr(iph, msglen - hlen);
+	}
 
 	/* compute the checksum */
 	iph->check = 0;
