@@ -857,6 +857,7 @@ static int parse_args(int argc, char *argv[], struct opts *opts)
 
 static void gen_packets(struct opts *opts)
 {
+	int bufsize = 64*1024*1024;
 	unsigned char buf[9000];
 	struct ethhdr *ethhdr;
 	int hlen = sizeof(*ethhdr);
@@ -872,6 +873,9 @@ static void gen_packets(struct opts *opts)
 		log_err_errno("socket failed");
 		return;
 	}
+
+	if (setsockopt(sd, SOL_SOCKET, SO_SNDBUF, &bufsize, sizeof(bufsize)) < 0)
+		perror("setsockopt(SO_SNDBUF)");
 
 	ethhdr = (struct ethhdr *) buf;
 	memcpy(ethhdr->h_source, opts->srcmac, ETH_ALEN);
