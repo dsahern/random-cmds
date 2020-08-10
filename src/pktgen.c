@@ -17,6 +17,9 @@
  * Source and destination addresses can be set. Other fields randomly set.
  * Malformed packets have wrong checksum.
  *
+ * ICMP
+ * Send icmp packets.
+ *
  * TCP/UDP
  * tcp and udp headers randomly generated
  *
@@ -35,8 +38,10 @@
 #include <netinet/ip.h>
 #include <netinet/tcp.h>
 #include <netinet/udp.h>
+#include <netinet/ip_icmp.h>
 #include <arpa/inet.h>
 #include <limits.h>
+#include <ctype.h>
 #include <string.h>
 #include <stdarg.h>
 #include <stdio.h>
@@ -115,7 +120,7 @@ static int str_to_int(const char *str, int min, int max, int *value, int base)
 	errno = 0;
 	number = (int) strtol(str, &end, base);
 
-	/* entire string should be consumed by conversion 
+	/* entire string should be consumed by conversion
 	 * and value should be between min and max
 	 */
 	if ( ((*end == '\0') || (*end == '\n')) && (end != str) &&
@@ -413,6 +418,167 @@ struct ipv4_opts {
 	__be16		dport;
 } ipv4_opts;
 
+struct {
+	__u8		type;
+	__u8		code;
+	__be16		mtu;
+	struct ipv4_opts ipv4_opts;
+} icmp_opts;
+
+static void icmp_usage(void)
+{
+	printf("ICMP arguments\n"
+	"  -T type       icmp type\n"
+	"  -C code       icmp code\n"
+	"  -m mtu        mtu for DEST_UNREACHABLE, FRAG_NEEDED\n"
+	"Inner packet:\n"
+	"  -s addr       Source address\n"
+	"  -d addr       Destination address\n"
+	"  -t            TCP transport protocol\n"
+	"  -S            TCP syn packets only\n"
+	"  -u            UDP transport protocol\n"
+	"  -p            destination port\n"
+	"  -P            source port\n"
+	"\n"
+	);
+}
+
+static int valid_icmp_type_code(__u8 icmp_type, __u8 icmp_code)
+{
+	switch(icmp_type) {
+	case ICMP_DEST_UNREACH:
+		switch(icmp_code) {
+		case ICMP_FRAG_NEEDED:
+			break;
+		default:
+			log_error("unknown icmp code\n");
+			return -1;
+		}
+		break;
+	default:
+		log_error("unknown icmp type\n");
+		return -1;
+	}
+
+	return 0;
+}
+
+static int icmp_code_parse(const char *str)
+{
+	int val;
+
+	if (isdigit(*str)) {
+		if (str_to_int(str, 1, 0xff, &val, 10)) {
+			log_error("Invalid icmp code\n");
+			return -1;
+		}
+		icmp_opts.code = val;
+	} else {
+		if (!strcmp(str, "frag")) {
+			icmp_opts.code = ICMP_FRAG_NEEDED;
+		} else {
+			log_error("Unknown icmp code string\n");
+			return -1;
+		}
+	}
+
+	return 0;
+}
+
+static int icmp_type_parse(const char *str)
+{
+	int val;
+
+	if (isdigit(*str)) {
+		if (str_to_int(str, 1, 0xff, &val, 10)) {
+			log_error("Invalid icmp type number\n");
+			return -1;
+		}
+		icmp_opts.type = val;
+	} else {
+		if (!strcmp(str, "unreach")) {
+			icmp_opts.type = ICMP_DEST_UNREACH;
+		} else {
+			log_error("Unknown icmp type string\n");
+			return -1;
+		}
+	}
+
+	return 0;
+}
+
+static int icmp_parse(int argc, char *argv[])
+{
+	int rc, val;
+
+	extern char *optarg;
+
+	icmp_opts.ipv4_opts.protocol = IPPROTO_ICMP;
+
+	while ((rc = getopt(argc, argv, "hT:C:m:s:d:p:P:tuS")) != -1) {
+		switch(rc) {
+		case 'T':
+			if (icmp_type_parse(optarg))
+				return -1;
+			break;
+		case 'C':
+			if (icmp_code_parse(optarg))
+				return -1;
+			break;
+		case 'm':
+			if (str_to_int(optarg, 1, 9999, &val, 10)) {
+				log_error("Invalid mtu\n");
+				return -1;
+			}
+			icmp_opts.mtu = htons(val);
+			break;
+		case 's':
+			if (str_to_ip(optarg, &icmp_opts.ipv4_opts.sip) != 0) {
+				log_error("Invalid source IP address\n");
+				return -1;
+			}
+			break;
+		case 'd':
+			if (str_to_ip(optarg, &icmp_opts.ipv4_opts.dip) != 0) {
+				log_error("Invalid destination IP address\n");
+				return -1;
+			}
+			break;
+		case 'p':
+			if (str_to_int(optarg, 1, 0xffff, &val, 10)) {
+				log_error("Invalid destination port\n");
+				return -1;
+			}
+			icmp_opts.ipv4_opts.dport = htons(val);
+			break;
+		case 'P':
+			if (str_to_int(optarg, 1, 0xffff, &val, 10)) {
+				log_error("Invalid source port\n");
+				return -1;
+			}
+			icmp_opts.ipv4_opts.sport = htons(val);
+			break;
+		case 'S':
+			icmp_opts.ipv4_opts.protocol = IPPROTO_TCP;
+			icmp_opts.ipv4_opts.synflood = 1;
+			break;
+		case 't':
+			icmp_opts.ipv4_opts.protocol = IPPROTO_TCP;
+			break;
+		case 'u':
+			icmp_opts.ipv4_opts.protocol = IPPROTO_UDP;
+			break;
+		case 'h':
+			icmp_usage();
+			return 1;
+		default:
+			return -1;
+		}
+	}
+
+	return valid_icmp_type_code(icmp_opts.type, icmp_opts.code);
+}
+
 static void ipv4_usage(void)
 {
 	printf("IPv4 protocol arguments\n"
@@ -426,6 +592,7 @@ static void ipv4_usage(void)
 	"  -M            Generate multicast destination addresses\n"
 	"  -f            IPv4 fragments\n"
 	"  -m            Create malformed IPv4 packets\n"
+	"  icmp          Create icmp packets; remaining arguments parsed for icmp\n"
 	"\n"
 	);
 }
@@ -492,8 +659,14 @@ static int ipv4_parse(int argc, char *argv[])
 	}
 
 	if (optind < argc) {
-		log_error("unknown ipv4 argument\n");
-		return -1;
+		if (!strcmp("icmp", argv[optind])) {
+			ipv4_opts.protocol = IPPROTO_ICMP;
+			optind++;
+			return icmp_parse(argc, argv);
+		} else {
+			log_error("unknown ipv4 argument\n");
+			return -1;
+		}
 	}
 	return 0;
 }
@@ -502,7 +675,7 @@ static unsigned short ipv4_csum(const void *buf, short nwords)
 {
 	const unsigned short *p = buf;
 	unsigned long csum = 0;
-	int n = nwords * 2;
+	int n = nwords << 1;
 
 	for (; n > 0; n--)
 		csum += *p++;
@@ -529,6 +702,43 @@ static unsigned short tcpudp_csum(__be32 sip, __be32 dip, unsigned char proto,
 	memcpy(tcpbuf+12, buf, len);
 
 	return ipv4_csum(tcpbuf, (len >> 2) + 3);
+}
+
+static int fill_ipv4_hdr(void *buf, int msglen,
+		         const struct ipv4_opts *opts);
+
+static int ipv4_nest;
+
+static unsigned int fill_icmp_hdr(void *buf)
+{
+	struct icmphdr *icmph = (struct icmphdr *)buf;
+	unsigned int tot_len = sizeof(*icmph);
+
+	icmph->checksum = 0;
+	if (ipv4_nest) {
+		icmph->type = ICMP_ECHOREPLY;
+		icmph->code = 0;
+	} else {
+		icmph->type = icmp_opts.type;
+		icmph->code = icmp_opts.code;
+	}
+	ipv4_nest++;
+
+	switch(icmph->type) {
+	case ICMP_DEST_UNREACH:
+		switch(icmph->code) {
+		case ICMP_FRAG_NEEDED:
+			memset(&icmph->un.frag, 0, sizeof(icmph->un.frag));
+			icmph->un.frag.mtu = icmp_opts.mtu;
+			tot_len += fill_ipv4_hdr(buf + tot_len, 64,
+						 &icmp_opts.ipv4_opts);
+			break;
+		}
+	}
+
+	icmph->checksum = ipv4_csum(buf, tot_len >> 2);
+
+	return tot_len;
 }
 
 static unsigned int fill_udp_hdr(void *buf, struct iphdr *iph, int msglen,
@@ -647,12 +857,14 @@ static int fill_ipv4_hdr(void *buf, int msglen,
 
 		iph->daddr = htonl(addr | 0xe0000000);
 	}
-	iph->protocol = opts->protocol;
 
+	iph->protocol = opts->protocol;
 	if (iph->protocol == IPPROTO_TCP)
 		tot_len += fill_tcp_hdr(buf + tot_len, iph, msglen, opts);
 	else if (iph->protocol == IPPROTO_UDP)
 		tot_len += fill_udp_hdr(buf + tot_len, iph, msglen, opts);
+	else if (iph->protocol == IPPROTO_ICMP)
+		tot_len += fill_icmp_hdr(buf + tot_len);
 
 	if (msglen && tot_len != msglen)
 		tot_len = msglen;
@@ -670,6 +882,7 @@ static int fill_ipv4_hdr(void *buf, int msglen,
 
 static int ipv4_create(void *buf, int len, int msglen)
 {
+	ipv4_nest = 0;
 	return fill_ipv4_hdr(buf, msglen, &ipv4_opts);
 }
 
