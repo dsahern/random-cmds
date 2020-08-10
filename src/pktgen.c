@@ -401,7 +401,7 @@ static int arp_create(void *buf, int len, int msglen)
  * ipv4
  */
 
-struct {
+struct ipv4_opts {
 	__u8		synflood;
 	__u8		protocol;
 	__u8		malformed;
@@ -490,6 +490,11 @@ static int ipv4_parse(int argc, char *argv[])
 			return -1;
 		}
 	}
+
+	if (optind < argc) {
+		log_error("unknown ipv4 argument\n");
+		return -1;
+	}
 	return 0;
 }
 
@@ -526,38 +531,43 @@ static unsigned short tcpudp_csum(__be32 sip, __be32 dip, unsigned char proto,
 	return ipv4_csum(tcpbuf, (len >> 2) + 3);
 }
 
-static void fill_udp_hdr(struct iphdr *iph, unsigned int len)
+static unsigned int fill_udp_hdr(void *buf, struct iphdr *iph, int msglen,
+				 const struct ipv4_opts *opts)
 {
-	struct udphdr *udph = (struct udphdr *)(iph + 1);
+	struct udphdr *udph = (struct udphdr *)buf;
+	unsigned int tot_len = msglen - sizeof(*iph);
 
-
-	if (ipv4_opts.sport)
-		udph->source  = ipv4_opts.sport;
+	if (opts->sport)
+		udph->source  = opts->sport;
 	else
 		udph->source = htons(random() & 0xFFFF ? : 6666);
 
-	if (ipv4_opts.dport)
-		udph->dest    = ipv4_opts.dport;
+	if (opts->dport)
+		udph->dest    = opts->dport;
 	else
 		udph->dest   = htons(random() & 0xFFFF ? : 9999);
 
-	udph->len    = htons(len);
+	udph->len    = htons(tot_len);
 	udph->check  = 0;
 	udph->check = tcpudp_csum(iph->saddr, iph->daddr, IPPROTO_UDP,
-				  (const unsigned char *)udph, sizeof(*udph));
+				  (const unsigned char *)udph, tot_len);
+
+	return tot_len;
 }
 
-static void fill_tcp_hdr(struct iphdr *iph, unsigned int len)
+static unsigned int fill_tcp_hdr(void *buf, struct iphdr *iph, int msglen,
+				 const struct ipv4_opts *opts)
 {
-	struct tcphdr *tcph = (struct tcphdr *)(iph + 1);
+	struct tcphdr *tcph = (struct tcphdr *)buf;
+	unsigned int tot_len = msglen - sizeof(*iph);
 
-	if (ipv4_opts.sport)
-		tcph->source  = ipv4_opts.sport;
+	if (opts->sport)
+		tcph->source  = opts->sport;
 	else
 		tcph->source  = htons(random() & 0xFFFF ? : 6666);
 
-	if (ipv4_opts.dport)
-		tcph->dest    = ipv4_opts.dport;
+	if (opts->dport)
+		tcph->dest    = opts->dport;
 	else
 		tcph->dest    = htons(random() & 0xFFFF ? : 9999);
 
@@ -581,7 +591,7 @@ static void fill_tcp_hdr(struct iphdr *iph, unsigned int len)
 	tcph->syn = 0;
 	tcph->fin = 0;
 
-	if (ipv4_opts.synflood) {
+	if (opts->synflood) {
 		tcph->syn = 1;
 	} else {
 		__u16 flags = random() & 0xFFFF;
@@ -602,14 +612,22 @@ static void fill_tcp_hdr(struct iphdr *iph, unsigned int len)
 	tcph->urg_ptr = 0;
 	tcph->check = 0;
 	tcph->check = tcpudp_csum(iph->saddr, iph->daddr, IPPROTO_TCP,
-				   (const unsigned char *)tcph, sizeof(*tcph));
+				   (const unsigned char *)tcph, tot_len);
+
+	return tot_len;
 }
 
-static int ipv4_create(void *buf, int len, int msglen)
+static int fill_ipv4_hdr(void *buf, int msglen,
+		         const struct ipv4_opts *opts)
 {
 	struct iphdr *iph = buf;
 	unsigned int hlen = sizeof(*iph);
-	unsigned int tot_len = msglen;
+	int tot_len = hlen;
+
+	if (msglen && msglen < hlen) {
+		log_error("Invalid message length; can not fit ipv4 header\n");
+		return -1;
+	}
 
 	iph->version = 4;
 	iph->ihl     = hlen >> 2;
@@ -617,37 +635,42 @@ static int ipv4_create(void *buf, int len, int msglen)
 	iph->tos     = 0;
 	iph->id      = htons(random() & 0xFFFF ? : 1234);
 
-	if (ipv4_opts.fragments)
+	if (opts->fragments)
 		iph->frag_off = htons(IP_MF + 0x0010);
 	else
 		iph->frag_off = htons(IP_DF);
 
-	iph->saddr = ipv4_opts.sip ? : random();
-	iph->daddr = ipv4_opts.dip ? : random();
-	if (ipv4_opts.mcast) {
+	iph->saddr = opts->sip ? : random();
+	iph->daddr = opts->dip ? : random();
+	if (opts->mcast) {
 		__u32 addr = ntohl(iph->daddr) & 0x000FFFF;
 
 		iph->daddr = htonl(addr | 0xe0000000);
 	}
-	iph->protocol = ipv4_opts.protocol;
+	iph->protocol = opts->protocol;
 
-	iph->tot_len = htons(tot_len);
+	if (iph->protocol == IPPROTO_TCP)
+		tot_len += fill_tcp_hdr(buf + tot_len, iph, msglen, opts);
+	else if (iph->protocol == IPPROTO_UDP)
+		tot_len += fill_udp_hdr(buf + tot_len, iph, msglen, opts);
 
-	if (msglen > hlen) {
-		if (iph->protocol == IPPROTO_TCP)
-			fill_tcp_hdr(iph, msglen - hlen);
-		else if (iph->protocol == IPPROTO_UDP)
-			fill_udp_hdr(iph, msglen - hlen);
-	}
+	if (msglen && tot_len != msglen)
+		tot_len = msglen;
 
 	/* compute the checksum */
+	iph->tot_len = htons(tot_len);
 	iph->check = 0;
 	iph->check = ipv4_csum(iph, iph->ihl);
 
-	if (ipv4_opts.malformed)
+	if (opts->malformed)
 		iph->check &= (__u16) random();
 
 	return tot_len;
+}
+
+static int ipv4_create(void *buf, int len, int msglen)
+{
+	return fill_ipv4_hdr(buf, msglen, &ipv4_opts);
 }
 
 /*******************************************************************************
@@ -822,7 +845,7 @@ static int parse_args(int argc, char *argv[], struct opts *opts)
 	}
 	fflush(stdout);
 	for (i = 0; i < ARRAY_SIZE(all_protocols); ++i) {
-		if (strcmp(all_protocols[i].name, argv[optind]) == 0) {
+		if (!strcmp(all_protocols[i].name, argv[optind])) {
 			opts->proto = &all_protocols[i];
 			break;
 		}
