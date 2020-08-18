@@ -26,11 +26,13 @@
  * David Ahern <dsahern@gmail.com>
  */
 
+#define _GNU_SOURCE
 #include <linux/if_ether.h>
 #include <linux/if_packet.h>
 #include <linux/sockios.h>
 #include <sys/socket.h>
 #include <sys/ioctl.h>
+#include <sys/syscall.h>
 #include <net/ethernet.h>
 #include <net/if.h>
 #include <netinet/ether.h>
@@ -50,6 +52,7 @@
 #include <unistd.h>
 #include <inttypes.h>
 #include <pthread.h>
+#include <sched.h>
 #include <errno.h>
 
 #define __packed	__attribute__((__packed__))
@@ -1209,15 +1212,35 @@ static void gen_packets(struct opts *opts)
 	close(sd);
 }
 
-static void *thread_gen_packets(void *arg)
+struct thread_arg {
+	int cpu;
+	struct opts *opts;
+};
+
+static pid_t gettid(void)
 {
-	gen_packets(arg);
+	return syscall(__NR_gettid);
+}
+
+static void *thread_gen_packets(void *_arg)
+{
+	struct thread_arg *arg = _arg;
+	pid_t tid = gettid();
+	cpu_set_t cset;
+
+	CPU_ZERO(&cset);
+	CPU_SET(arg->cpu, &cset);
+	if (sched_setaffinity(tid, sizeof(cset), &cset) < 0)
+		log_err_errno("Failed to set CPU affinity\n");
+
+	gen_packets(arg->opts);
 
 	return NULL;
 }
 
 static void do_threads(struct opts *opts)
 {
+	struct thread_arg *targs;
 	pthread_attr_t attr;
 	pthread_t *id;
 	int i;
@@ -1228,15 +1251,24 @@ static void do_threads(struct opts *opts)
 		return;
 	}
 
+	targs = calloc(opts->nthreads, sizeof(*targs));
+	if (!targs) {
+		log_err_errno("calloc failed");
+		return;
+	}
+
 	if (pthread_attr_init(&attr) != 0) {
 		log_err_errno("pthread_attr_init failed");
 		return;
 	}
 
 	for (i = 0; i < opts->nthreads; ++i) {
+		struct thread_arg *targ = &targs[i];
 		int rc;
 
-		rc = pthread_create(&id[i], &attr, thread_gen_packets, opts);
+		targ->opts = opts;
+		targ->cpu = i;
+		rc = pthread_create(&id[i], &attr, thread_gen_packets, targ);
 		if (rc) {
 			log_error("pthread_create failed for thread %d: err %d\n",
 				  i, rc);
