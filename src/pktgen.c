@@ -349,7 +349,7 @@ static int arp_parse(int argc, char *argv[])
 	return 0;
 }
 
-static int arp_create(void *buf, int len, int msglen)
+static int arp_create(void *buf, int len)
 {
 	struct arphdr *hdr = buf;
 	struct arp_resp *resp;
@@ -416,6 +416,7 @@ struct ipv4_opts {
 	__be32		dip;
 	__be16		sport;
 	__be16		dport;
+	int		plen;
 } ipv4_opts;
 
 struct {
@@ -514,6 +515,8 @@ static int icmp_parse(int argc, char *argv[])
 	extern char *optarg;
 
 	icmp_opts.ipv4_opts.protocol = IPPROTO_ICMP;
+	icmp_opts.ipv4_opts.sip = ipv4_opts.dip;
+	icmp_opts.ipv4_opts.dip = ipv4_opts.sip;
 
 	while ((rc = getopt(argc, argv, "hT:C:m:s:d:p:P:tuS")) != -1) {
 		switch(rc) {
@@ -564,9 +567,11 @@ static int icmp_parse(int argc, char *argv[])
 			break;
 		case 't':
 			icmp_opts.ipv4_opts.protocol = IPPROTO_TCP;
+			icmp_opts.ipv4_opts.plen = 16;
 			break;
 		case 'u':
 			icmp_opts.ipv4_opts.protocol = IPPROTO_UDP;
+			icmp_opts.ipv4_opts.plen = 16;
 			break;
 		case 'h':
 			icmp_usage();
@@ -590,6 +595,7 @@ static void ipv4_usage(void)
 	"  -p            destination port\n"
 	"  -P            source port\n"
 	"  -M            Generate multicast destination addresses\n"
+	"  -l len        Length of payload\n"
 	"  -f            IPv4 fragments\n"
 	"  -m            Create malformed IPv4 packets\n"
 	"  icmp          Create icmp packets; remaining arguments parsed for icmp\n"
@@ -603,7 +609,7 @@ static int ipv4_parse(int argc, char *argv[])
 
 	extern char *optarg;
 
-	while ((rc = getopt(argc, argv, "hms:d:p:P:tufMS")) != -1) {
+	while ((rc = getopt(argc, argv, "hms:d:p:P:tul:fMS")) != -1) {
 		switch(rc) {
 		case 's':
 			if (str_to_ip(optarg, &ipv4_opts.sip) != 0) {
@@ -643,6 +649,13 @@ static int ipv4_parse(int argc, char *argv[])
 			break;
 		case 'M':
 			ipv4_opts.mcast = 1;
+			break;
+
+		case 'l':
+			if (str_to_int(optarg, 1, 9000, &ipv4_opts.plen, 0) != 0) {
+				log_error("invalid message length\n");
+				return -1;
+			}
 			break;
 		case 'f':
 			ipv4_opts.fragments = 1;
@@ -689,7 +702,7 @@ static unsigned short ipv4_csum(const void *buf, short nwords)
 static unsigned short tcpudp_csum(__be32 sip, __be32 dip, unsigned char proto,
 				  const unsigned char *buf, unsigned int len)
 {
-	unsigned char tcpbuf[256];   /* pseudo-header + tcp header */
+	unsigned char tcpbuf[9000];   /* pseudo-header + tcp header */
 	__u16 *plen;
 
 	memset(tcpbuf, 0, sizeof(tcpbuf));
@@ -699,17 +712,17 @@ static unsigned short tcpudp_csum(__be32 sip, __be32 dip, unsigned char proto,
 	plen = (__u16 *)&tcpbuf[10];
 	*plen = htons(len);
 
-	memcpy(tcpbuf+12, buf, len);
+	memcpy(tcpbuf + 12, buf, len);
 
 	return ipv4_csum(tcpbuf, (len >> 2) + 3);
 }
 
-static int fill_ipv4_hdr(void *buf, int msglen,
+static int fill_ipv4_hdr(void *buf, int buflen,
 		         const struct ipv4_opts *opts);
 
 static int ipv4_nest;
 
-static unsigned int fill_icmp_hdr(void *buf)
+static unsigned int fill_icmp_hdr(void *buf, int buflen)
 {
 	struct icmphdr *icmph = (struct icmphdr *)buf;
 	unsigned int tot_len = sizeof(*icmph);
@@ -730,7 +743,7 @@ static unsigned int fill_icmp_hdr(void *buf)
 		case ICMP_FRAG_NEEDED:
 			memset(&icmph->un.frag, 0, sizeof(icmph->un.frag));
 			icmph->un.frag.mtu = icmp_opts.mtu;
-			tot_len += fill_ipv4_hdr(buf + tot_len, 64,
+			tot_len += fill_ipv4_hdr(buf + tot_len, buflen - tot_len,
 						 &icmp_opts.ipv4_opts);
 			break;
 		}
@@ -741,21 +754,24 @@ static unsigned int fill_icmp_hdr(void *buf)
 	return tot_len;
 }
 
-static unsigned int fill_udp_hdr(void *buf, struct iphdr *iph, int msglen,
-				 const struct ipv4_opts *opts)
+static int fill_udp_hdr(void *buf, int buflen, struct iphdr *iph,
+			const struct ipv4_opts *opts)
 {
 	struct udphdr *udph = (struct udphdr *)buf;
-	unsigned int tot_len = msglen - sizeof(*iph);
+	int tot_len = opts->plen + sizeof(*udph);
+
+	if (tot_len > buflen)
+		return -1;
 
 	if (opts->sport)
-		udph->source  = opts->sport;
+		udph->source = opts->sport;
 	else
 		udph->source = htons(random() & 0xFFFF ? : 6666);
 
 	if (opts->dport)
-		udph->dest    = opts->dport;
+		udph->dest = opts->dport;
 	else
-		udph->dest   = htons(random() & 0xFFFF ? : 9999);
+		udph->dest = htons(random() & 0xFFFF ? : 9999);
 
 	udph->len    = htons(tot_len);
 	udph->check  = 0;
@@ -765,21 +781,24 @@ static unsigned int fill_udp_hdr(void *buf, struct iphdr *iph, int msglen,
 	return tot_len;
 }
 
-static unsigned int fill_tcp_hdr(void *buf, struct iphdr *iph, int msglen,
-				 const struct ipv4_opts *opts)
+static int fill_tcp_hdr(void *buf, int buflen, struct iphdr *iph,
+			const struct ipv4_opts *opts)
 {
 	struct tcphdr *tcph = (struct tcphdr *)buf;
-	unsigned int tot_len = msglen - sizeof(*iph);
+	int tot_len = opts->plen + sizeof(*tcph);
+
+	if (tot_len > buflen)
+		return -1;
 
 	if (opts->sport)
-		tcph->source  = opts->sport;
+		tcph->source = opts->sport;
 	else
-		tcph->source  = htons(random() & 0xFFFF ? : 6666);
+		tcph->source = htons(random() & 0xFFFF ? : 6666);
 
 	if (opts->dport)
-		tcph->dest    = opts->dport;
+		tcph->dest = opts->dport;
 	else
-		tcph->dest    = htons(random() & 0xFFFF ? : 9999);
+		tcph->dest = htons(random() & 0xFFFF ? : 9999);
 
 	tcph->seq     = htonl(random() & 0xFFFFFFFF ? : 12345);
 	tcph->ack_seq = htonl(random() & 0xFFFFFFFF ? : 12346);
@@ -803,13 +822,19 @@ static unsigned int fill_tcp_hdr(void *buf, struct iphdr *iph, int msglen,
 
 	if (opts->synflood) {
 		tcph->syn = 1;
+	} else if (opts->plen) {
+		__u16 flags = random() & 0xFFFF;
+
+		if (flags & 0x00ff0000)
+			tcph->ack = 1;
+		if (flags & 0xff000000)
+			tcph->psh = 1;
 	} else {
 		__u16 flags = random() & 0xFFFF;
 
 		tcph->syn = flags & 3 ? 1 : 0;
 		if (!tcph->syn && (flags & (3 << 2)))
 			tcph->fin = 1;
-
 		if (!tcph->syn && !tcph->fin && (flags & (3 << 4)))
 			tcph->rst = 1;
 		if (flags & 0x00ff0000)
@@ -827,14 +852,15 @@ static unsigned int fill_tcp_hdr(void *buf, struct iphdr *iph, int msglen,
 	return tot_len;
 }
 
-static int fill_ipv4_hdr(void *buf, int msglen,
+static int fill_ipv4_hdr(void *buf, int buflen,
 		         const struct ipv4_opts *opts)
 {
 	struct iphdr *iph = buf;
 	unsigned int hlen = sizeof(*iph);
 	int tot_len = hlen;
+	int rc = 0;
 
-	if (msglen && msglen < hlen) {
+	if (buflen < hlen) {
 		log_error("Invalid message length; can not fit ipv4 header\n");
 		return -1;
 	}
@@ -858,16 +884,26 @@ static int fill_ipv4_hdr(void *buf, int msglen,
 		iph->daddr = htonl(addr | 0xe0000000);
 	}
 
-	iph->protocol = opts->protocol;
-	if (iph->protocol == IPPROTO_TCP)
-		tot_len += fill_tcp_hdr(buf + tot_len, iph, msglen, opts);
-	else if (iph->protocol == IPPROTO_UDP)
-		tot_len += fill_udp_hdr(buf + tot_len, iph, msglen, opts);
-	else if (iph->protocol == IPPROTO_ICMP)
-		tot_len += fill_icmp_hdr(buf + tot_len);
+	buf += tot_len;
+	buflen -= tot_len;
 
-	if (msglen && tot_len != msglen)
-		tot_len = msglen;
+	iph->protocol = opts->protocol;
+	switch (iph->protocol) {
+	case IPPROTO_TCP:
+		rc = fill_tcp_hdr(buf, buflen, iph, opts);
+		break;
+	case IPPROTO_UDP:
+		rc = fill_udp_hdr(buf, buflen, iph, opts);
+		break;
+	case IPPROTO_ICMP:
+		rc = fill_icmp_hdr(buf, buflen);
+		break;
+	}
+
+	if (rc < 0)
+		return rc;
+
+	tot_len += rc;
 
 	/* compute the checksum */
 	iph->tot_len = htons(tot_len);
@@ -880,10 +916,10 @@ static int fill_ipv4_hdr(void *buf, int msglen,
 	return tot_len;
 }
 
-static int ipv4_create(void *buf, int len, int msglen)
+static int ipv4_create(void *buf, int len)
 {
 	ipv4_nest = 0;
-	return fill_ipv4_hdr(buf, msglen, &ipv4_opts);
+	return fill_ipv4_hdr(buf, len, &ipv4_opts);
 }
 
 /*******************************************************************************
@@ -896,7 +932,7 @@ struct protocol {
 	ushort hatype; /* hardware address type */
 	void (*usage) (void);
 	int (*parse_args)(int argc, char **argv);
-	int (*create)(void *buf, int len, int msglen);
+	int (*create)(void *buf, int len);
 };
 
 struct protocol all_protocols[] = {
@@ -919,7 +955,6 @@ static void main_usage(void)
 	"  -d dstmac   destination mac in ethernet header (default is random)\n"
 	"  -v vlan     include vlan header\n"
 	"  -n num      number of messages to send (default is 1; 0 = unlimited)\n"
-	"  -l len      length of message to send\n"
 	"  -P num      pause every num packets (default no pause)\n"
 	"  -D delay    usec to pause every num packets (default is %d)\n"
 	"  -N num      spawn num threads each generating packets based on config (default is 1)\n"
@@ -939,7 +974,6 @@ struct opts {
 	const char *ifname;   /* interface to send messages */
 	int ifidx;
 
-	int msglen;
 	int nmsgs;            /* number of messages to send */
 	int pause_count;
 	int pause_delay;
@@ -1001,12 +1035,6 @@ static int parse_main_args(int argc, char *argv[], struct opts *opts)
 		case 'P':
 			if (str_to_int(optarg, 1, INT_MAX, &opts->pause_count, 0) != 0) {
 				log_error("invalid number of messages for pause\n");
-				return -1;
-			}
-			break;
-		case 'l':
-			if (str_to_int(optarg, 1, 9000, &opts->msglen, 0) != 0) {
-				log_error("invalid message length\n");
 				return -1;
 			}
 			break;
@@ -1155,8 +1183,7 @@ static void gen_packets(struct opts *opts)
 		if (opts->dstmac_set == 0)
 			random_mac(ethhdr->h_dest);
 
-		proto_len = proto->create(buf + hlen, sizeof(buf) - hlen,
-					  opts->msglen);
+		proto_len = proto->create(buf + hlen, sizeof(buf) - hlen);
 		if (proto_len <= 0) /* < 0 = err, == 0 means done */
 			break;
 
@@ -1234,7 +1261,6 @@ int main(int argc, char *argv[])
 	struct opts opts = {
 		.pause_delay = DEFLT_PAUSE_DELAY,
 		.nmsgs = 1,
-		.msglen = 64,
 		.nthreads = 1,
 	};
 
