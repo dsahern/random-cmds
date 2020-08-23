@@ -1,24 +1,62 @@
+ifeq ("$(origin V)", "command line")
+  VERBOSE = $(V)
+endif
+ifndef VERBOSE
+  VERBOSE = 0
+endif
+ifeq ($(VERBOSE),1)
+  Q =
+else
+  Q = @
+endif
+
+ifeq ($(VERBOSE), 0)
+  QUIET_CC       = @echo '    CC       '$@;
+  QUIET_LINK     = @echo '    LINK     '$@;
+  QUIET_CLANG    = @echo '    CLANG    '$@;
+  QUIET_LLC      = @echo '    LLC      '$@;
+endif
+
+ifneq (,$(BUILDDIR))
+OBJDIR = $(BUILDDIR)/src/obj/
+else
+OBJDIR = obj/
+endif
+
+ifneq (,$(BUILDDIR))
+BINDIR = $(BUILDDIR)/src/bin/
+else
+BINDIR = bin/
+endif
 
 CC = gcc
-LD = ld
 CFLAGS = -O2 -g -Wall
 LDFLAGS = -static
 INCLUDES = -I.
-CMDS = rps pktgen tap_recv
 
-all: $(CMDS)
+CMDS = $(BINDIR)rps
+CMDS += $(BINDIR)pktgen
+CMDS += $(BINDIR)tap_recv
 
-%.o: %.c
-	$(CC) $(DEFS) $(CFLAGS) $(INCLUDES) -c $^ -o $@
+COMMON += $(OBJDIR)logging.o
+COMMON += $(OBJDIR)str_utils.o
 
-%: %.o
-	$(CC) $(LDFLAGS) $^ -o $@
+all: build $(CMDS)
 
-pktgen: pktgen.o logging.o tap.o str_utils.o
-	$(CC) $(LDFLAGS) $^ -o $@ -lpthread
+build:
+	@mkdir -p $(OBJDIR) $(BINDIR)
 
-tap_recv: tap_recv.o logging.o tap.o packet.o str_utils.o
-	$(CC) $(LDFLAGS) $^ -o $@ -lpthread
+$(OBJDIR)%.o: %.c
+	$(QUIET_CC)$(CC) $(DEFS) $(CFLAGS) $(INCLUDES) -c $^ -o $@
+
+$(BINDIR)%: $(OBJDIR)%.o $(COMMON)
+	$(QUIET_LINK)$(CC) $(LDFLAGS) $^ -o $@
+
+$(BINDIR)pktgen: $(OBJDIR)pktgen.o $(OBJDIR)tap.o $(COMMON)
+	$(QUIET_LINK)$(CC) $(LDFLAGS) $^ -o $@ -lpthread
+
+$(BINDIR)tap_recv: $(OBJDIR)tap_recv.o $(OBJDIR)tap.o $(OBJDIR)packet.o $(COMMON)
+	$(QUIET_LINK)$(CC) $(LDFLAGS) $^ -o $@ -lpthread
 
 clean:
-	rm -rf $(CMDS) *.o
+	@rm -rf $(OBJDIR) $(BINDIR)
