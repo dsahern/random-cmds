@@ -27,12 +27,12 @@
  */
 
 #define _GNU_SOURCE
+#define __USE_GNU
 #include <linux/if_ether.h>
 #include <linux/if_packet.h>
 #include <linux/sockios.h>
 #include <sys/socket.h>
 #include <sys/ioctl.h>
-#include <sys/syscall.h>
 #include <net/ethernet.h>
 #include <net/if.h>
 #include <netinet/ether.h>
@@ -1180,11 +1180,6 @@ struct thread_arg {
 	int cpu;
 	struct opts *opts;
 };
-
-static pid_t gettid(void)
-{
-	return syscall(__NR_gettid);
-}
 
 static void *thread_gen_packets(void *_arg)
 {
