@@ -3,14 +3,18 @@ CC = gcc
 LD = ld
 CFLAGS = -O2 -g -Wall
 LDFLAGS = -static
+INCLUDES = -I.
 
 all: rps pktgen
 
-%: %.c
-	$(CC) $(DEFS) $(CFLAGS) $(LDFLAGS) $< -o $@
+%.o: %.c
+	$(CC) $(DEFS) $(CFLAGS) $(INCLUDES) -c $^ -o $@
 
-pktgen: pktgen.c
-	$(CC) $(DEFS) $(CFLAGS) $(LDFLAGS) $< -o $@ -lpthread
+%: %.o
+	$(CC) $(LDFLAGS) $^ -o $@
+
+pktgen: pktgen.o logging.o
+	$(CC) $(LDFLAGS) $^ -o $@ -lpthread
 
 clean:
-	@rm -rf rps pktgen
+	rm -rf rps pktgen *.o

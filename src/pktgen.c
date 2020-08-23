@@ -45,7 +45,6 @@
 #include <limits.h>
 #include <ctype.h>
 #include <string.h>
-#include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
@@ -54,6 +53,8 @@
 #include <pthread.h>
 #include <sched.h>
 #include <errno.h>
+
+#include "logging.h"
 
 #define __packed	__attribute__((__packed__))
 
@@ -73,43 +74,6 @@ struct vlan_ethhdr {
 //static const char bcast_mac[ETH_ALEN] =
 //			{ 0xff, 0xff, 0xff, 0xff, 0xff, 0xff };
 static int debug;
-
-/*******************************************************************************
- * logging functions
- */
-
-static void log_error(const char *format, ...)
-{
-	va_list args;
-
-	va_start(args, format);
-	vfprintf(stderr, format, args);
-	va_end(args);
-
-	return;
-}
-
-static void log_msg(const char *format, ...)
-{
-	va_list args;
-
-	va_start(args, format);
-	vfprintf(stdout, format, args);
-	va_end(args);
-
-	return;
-}
-
-static void log_err_errno(const char *format, ...)
-{
-	va_list args;
-
-	va_start(args, format);
-	vfprintf(stderr, format, args);
-	va_end(args);
-
-	fprintf(stderr, ": %d: %s\n", errno, strerror(errno));
-}
 
 /*******************************************************************************
  * string conversions
