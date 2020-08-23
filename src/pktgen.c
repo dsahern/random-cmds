@@ -45,6 +45,7 @@
 #include <limits.h>
 #include <ctype.h>
 #include <string.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
@@ -55,6 +56,8 @@
 #include <errno.h>
 
 #include "logging.h"
+
+int tap_open(const char *ifname, bool nonblock);
 
 #define __packed	__attribute__((__packed__))
 
@@ -1094,19 +1097,27 @@ static void gen_packets(struct opts *opts)
 	int hlen = sizeof(*ethhdr);
 	struct sockaddr_ll ll_addr;
 	struct protocol *proto;
+	bool use_write = false;
 	int sent_count = 0;
 	int rc, sd;
 
 	proto = opts->proto;
 
-	sd = link_socket();
-	if (sd < 0) {
-		log_err_errno("socket failed");
-		return;
-	}
+	if (!strncmp(opts->ifname, "tap", 3)) {
+		sd = tap_open(opts->ifname, true);
+		if (sd < 0)
+			return;
+		use_write = true;
+	} else {
+		sd = link_socket();
+		if (sd < 0) {
+			log_err_errno("socket failed");
+			return;
+		}
 
-	if (setsockopt(sd, SOL_SOCKET, SO_SNDBUF, &bufsize, sizeof(bufsize)) < 0)
-		perror("setsockopt(SO_SNDBUF)");
+		if (setsockopt(sd, SOL_SOCKET, SO_SNDBUF, &bufsize, sizeof(bufsize)) < 0)
+			perror("setsockopt(SO_SNDBUF)");
+	}
 
 	ethhdr = (struct ethhdr *) buf;
 	memcpy(ethhdr->h_source, opts->srcmac, ETH_ALEN);
@@ -1154,8 +1165,12 @@ static void gen_packets(struct opts *opts)
 		if (proto_len <= 0) /* < 0 = err, == 0 means done */
 			break;
 
-		rc = sendto(sd, buf, hlen + proto_len, 0,
-			    (struct sockaddr*) &ll_addr, sizeof(ll_addr));
+		if (use_write) {
+			rc = write(sd, buf, hlen + proto_len);
+		} else {
+			rc = sendto(sd, buf, hlen + proto_len, 0,
+				    (struct sockaddr*) &ll_addr, sizeof(ll_addr));
+		}
 		if (rc < 0) {
 			log_msg("failed!\n");
 			log_err_errno("send failed");

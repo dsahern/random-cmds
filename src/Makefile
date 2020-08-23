@@ -13,7 +13,7 @@ all: rps pktgen
 %: %.o
 	$(CC) $(LDFLAGS) $^ -o $@
 
-pktgen: pktgen.o logging.o
+pktgen: pktgen.o logging.o tap.o
 	$(CC) $(LDFLAGS) $^ -o $@ -lpthread
 
 clean:
