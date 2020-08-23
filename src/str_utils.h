@@ -2,6 +2,7 @@
 #ifndef __STR_UTILS_H
 #define __STR_UTILS_H
 
+int str_to_int_base(const char *str, int min, int max, int *value, int base);
 int str_to_int(const char *str, int min, int max, int *value);
 int str_to_ushort(const char *str, unsigned short *us);
 int str_to_ulong(const char *str, unsigned long *ul);

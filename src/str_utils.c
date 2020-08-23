@@ -14,7 +14,7 @@
 
 #include "str_utils.h"
 
-static int str_to_int_base(const char *str, int min, int max, int *value, int base)
+int str_to_int_base(const char *str, int min, int max, int *value, int base)
 {
 	int number;
 	char *end;

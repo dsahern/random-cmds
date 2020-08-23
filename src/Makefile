@@ -14,7 +14,7 @@ all: $(CMDS)
 %: %.o
 	$(CC) $(LDFLAGS) $^ -o $@
 
-pktgen: pktgen.o logging.o tap.o
+pktgen: pktgen.o logging.o tap.o str_utils.o
 	$(CC) $(LDFLAGS) $^ -o $@ -lpthread
 
 tap_recv: tap_recv.o logging.o tap.o packet.o str_utils.o

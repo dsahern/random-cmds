@@ -55,6 +55,7 @@
 #include <sched.h>
 #include <errno.h>
 
+#include "str_utils.h"
 #include "logging.h"
 
 int tap_open(const char *ifname, bool nonblock);
@@ -82,27 +83,6 @@ static int debug;
  * string conversions
  */
 
-static int str_to_int(const char *str, int min, int max, int *value, int base)
-{
-	int number;
-	char *end;
-
-	errno = 0;
-	number = (int) strtol(str, &end, base);
-
-	/* entire string should be consumed by conversion
-	 * and value should be between min and max
-	 */
-	if ( ((*end == '\0') || (*end == '\n')) && (end != str) &&
-		(errno != ERANGE) && (min <= number) && (number <= max))
-	{
-		*value = number;
-		return 0;
-	}
-
-	return -1;
-}
-
 int str_to_ip(const char *str, uint32_t *ip)
 {
 	struct in_addr addr;
@@ -116,48 +96,6 @@ int str_to_ip(const char *str, uint32_t *ip)
 	return 0;
 }
 
-/* mac needs to have length ETH_ALEN */
-int str_to_mac(const char *str, unsigned char *mac)
-{
-	int rc = -1, m, i;
-	char *s = strdup(str), *p, *d, tmp[3];
-
-	if (!s)
-		return -1;
-
-	p = s;
-	tmp[2] = '\0';
-	for (i = 0; i < ETH_ALEN; ++i) {
-		if (*p == '\0')
-			goto out;
-
-		d = strchr(p, ':');
-		if (d) {
-			*d = '\0';
-			if (strlen(p) > 2)
-				goto out;
-
-			strcpy(tmp, p);
-			p = d + 1;
-		} else {
-			strncpy(tmp, p, 2);
-			p += 2;
-		}
-
-		if (str_to_int(tmp, 0, 0xFF, &m, 16) != 0)
-			goto out;
-
-		mac[i] = m;
-	}
-
-	if (*p == '\0')
-		rc = 0;
-out:
-	free(s);
-
-	return rc;
-}
-
 /*******************************************************************************
  * other generic, utility functions
  */
@@ -169,14 +107,6 @@ static int NumberOfSetBits(int i)
     i = i - ((i >> 1) & 0x55555555);
     i = (i & 0x33333333) + ((i >> 2) & 0x33333333);
     return (((i + (i >> 4)) & 0x0F0F0F0F) * 0x01010101) >> 24;
-}
-
-static void print_mac(unsigned char *mac, const char *desc)
-{
-	if (debug) {
-		printf("%s: %x:%x:%x:%x:%x:%x\n",
-		       desc, mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
-	}
 }
 
 static void random_mac(unsigned char *mac)
@@ -193,8 +123,6 @@ static void random_mac(unsigned char *mac)
 	mac[0] = 0x00;
 	mac[1] = 0x3c;
 	memcpy(&mac[2], &a, 4);
-
-	print_mac(mac, "random_mac");
 }
 
 /*******************************************************************************
@@ -439,7 +367,7 @@ static int icmp_code_parse(const char *str)
 	int val;
 
 	if (isdigit(*str)) {
-		if (str_to_int(str, 1, 0xff, &val, 10)) {
+		if (str_to_int_base(str, 1, 0xff, &val, 10)) {
 			log_error("Invalid icmp code\n");
 			return -1;
 		}
@@ -461,7 +389,7 @@ static int icmp_type_parse(const char *str)
 	int val;
 
 	if (isdigit(*str)) {
-		if (str_to_int(str, 1, 0xff, &val, 10)) {
+		if (str_to_int_base(str, 1, 0xff, &val, 10)) {
 			log_error("Invalid icmp type number\n");
 			return -1;
 		}
@@ -499,7 +427,7 @@ static int icmp_parse(int argc, char *argv[])
 				return -1;
 			break;
 		case 'm':
-			if (str_to_int(optarg, 1, 9999, &val, 10)) {
+			if (str_to_int_base(optarg, 1, 9999, &val, 10)) {
 				log_error("Invalid mtu\n");
 				return -1;
 			}
@@ -518,14 +446,14 @@ static int icmp_parse(int argc, char *argv[])
 			}
 			break;
 		case 'p':
-			if (str_to_int(optarg, 1, 0xffff, &val, 10)) {
+			if (str_to_int_base(optarg, 1, 0xffff, &val, 10)) {
 				log_error("Invalid destination port\n");
 				return -1;
 			}
 			icmp_opts.ipv4_opts.dport = htons(val);
 			break;
 		case 'P':
-			if (str_to_int(optarg, 1, 0xffff, &val, 10)) {
+			if (str_to_int_base(optarg, 1, 0xffff, &val, 10)) {
 				log_error("Invalid source port\n");
 				return -1;
 			}
@@ -594,14 +522,14 @@ static int ipv4_parse(int argc, char *argv[])
 			}
 			break;
 		case 'p':
-			if (str_to_int(optarg, 1, 0xffff, &val, 10)) {
+			if (str_to_int_base(optarg, 1, 0xffff, &val, 10)) {
 				log_error("Invalid destination port\n");
 				return -1;
 			}
 			ipv4_opts.dport = htons(val);
 			break;
 		case 'P':
-			if (str_to_int(optarg, 1, 0xffff, &val, 10)) {
+			if (str_to_int_base(optarg, 1, 0xffff, &val, 10)) {
 				log_error("Invalid source port\n");
 				return -1;
 			}
@@ -622,7 +550,7 @@ static int ipv4_parse(int argc, char *argv[])
 			break;
 
 		case 'l':
-			if (str_to_int(optarg, 1, 9000, &ipv4_opts.plen, 0) != 0) {
+			if (str_to_int(optarg, 1, 9000, &ipv4_opts.plen) != 0) {
 				log_error("invalid message length\n");
 				return -1;
 			}
@@ -976,7 +904,7 @@ static int parse_main_args(int argc, char *argv[], struct opts *opts)
 			opts->ifname = optarg;
 			break;
 		case 'n':
-			if (str_to_int(optarg, 0, INT_MAX, &opts->nmsgs, 0) != 0) {
+			if (str_to_int(optarg, 0, INT_MAX, &opts->nmsgs) != 0) {
 				log_error("invalid number of messages to send\n");
 				return -1;
 			}
@@ -996,26 +924,26 @@ static int parse_main_args(int argc, char *argv[], struct opts *opts)
 			opts->srcmac_set = 1;
 			break;
 		case 'v':
-			if (str_to_int(optarg, 1, 4095, &tmp, 0) != 0) {
+			if (str_to_int(optarg, 1, 4095, &tmp) != 0) {
 				log_error("invalid vlan id\n");
 				return -1;
 			}
 			opts->vlan = tmp;
 			break;
 		case 'P':
-			if (str_to_int(optarg, 1, INT_MAX, &opts->pause_count, 0) != 0) {
+			if (str_to_int(optarg, 1, INT_MAX, &opts->pause_count) != 0) {
 				log_error("invalid number of messages for pause\n");
 				return -1;
 			}
 			break;
 		case 'D':
-			if (str_to_int(optarg, 1, INT_MAX, &opts->pause_delay, 0) != 0) {
+			if (str_to_int(optarg, 1, INT_MAX, &opts->pause_delay) != 0) {
 				log_error("invalid pause time\n");
 				return -1;
 			}
 			break;
 		case 'N':
-			if (str_to_int(optarg, 1, 64, &tmp, 0) != 0) {
+			if (str_to_int(optarg, 1, 64, &tmp) != 0) {
 				log_error("invalid number of threads (1-64)\n");
 				return -1;
 			}
