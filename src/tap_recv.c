@@ -19,17 +19,34 @@ static bool done;
 
 int main(int argc, char *argv[])
 {
+	bool forward = false;
 	const char *ifname;
 	char buf[64*1024];
 	ssize_t n;
 	int fd;
+	int rc;
+	extern char *optarg;
 
-	if (argc != 2) {
-		log_error("usage: tap_recv <tap device>\n");
+	while (1) {
+		rc = getopt(argc, argv, "f");
+		if (rc < 0) break;
+
+		switch(rc) {
+		case 'f':
+			forward = true;
+			break;
+		default:
+			log_error("usage: tap_recv [ -f ] <tap device>\n");
+			return 1;
+		}
+	}
+
+	if (optind >= argc) {
+		log_error("usage: tap_recv [ -f ] <tap device>\n");
 		return 1;
 	}
 
-	ifname = argv[1];
+	ifname = argv[optind];
 	fd = tap_open(ifname, false);
 	if (fd < 0)
 		return 1;
@@ -40,7 +57,12 @@ int main(int argc, char *argv[])
 			log_err_errno("read failed");
 			break;
 		}
-		print_pkt(buf, n);
+		if (forward) {
+			if (write(fd, buf, n) != n)
+				log_err_errno("Failed to forward packet");
+		} else {
+			print_pkt(buf, n);
+		}
 	}
 	close(fd);
 	return 0;
