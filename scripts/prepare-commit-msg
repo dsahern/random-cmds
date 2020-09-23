@@ -1,0 +1,42 @@
+#!/bin/bash
+#
+# .git/hooks/prepare-commit-msg with 755 permissions
+
+add_signoff()
+{
+	local file=$1
+
+	SOB=$(git var GIT_AUTHOR_IDENT | sed -n 's/^\(.*>\).*$/Signed-off-by: \1/p')
+	grep -qs "^$SOB" "$file" && SOB=
+
+	[ -n "${SOB}" ] && echo "${SOB}" >> $file
+}
+
+add_cover_letter()
+{
+	local file=$1
+	local branch=$2
+	local patch_dir=/tmp/iproute2-patches/${branch}
+	local cover_letter
+
+	# is there a patch directory in /tmp get sender from patch 0
+	[ ! -d ${patch_dir} ] && return 0
+
+	cover_letter=$(ls -C1 ${patch_dir}/\[*\ 0_*\]*.eml)
+	[ ! -f "${cover_letter}" ] && return 0
+	$HOME/bin/cover-letter.py "${cover_letter}" >> ${file}
+}
+
+################################################################################
+#
+
+case "$2,$3" in
+  merge,)
+	# get name of branch being merged
+	BRANCH=$(awk '$1 == "Merge" && $2 == "branch" {print $3}' ${1} | sed -e "s/'//g")
+	[ -n "${BRANCH}" ] && add_cover_letter "$1" "${BRANCH}"
+	;;
+esac
+
+add_signoff "$1"
+exit 0
