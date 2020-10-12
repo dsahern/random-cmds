@@ -66,6 +66,7 @@ int tap_open(const char *ifname, bool nonblock);
 #define ARRAY_SIZE(x) (sizeof(x)/sizeof(x[0]))
 
 #define MAX_SRC_MAC  1024   /* make a power of 2 */
+#define MAX_BUF_SZ  65*1024
 
 struct vlan_ethhdr {
 	unsigned char   h_dest[ETH_ALEN];
@@ -78,6 +79,23 @@ struct vlan_ethhdr {
 //static const char bcast_mac[ETH_ALEN] =
 //			{ 0xff, 0xff, 0xff, 0xff, 0xff, 0xff };
 static int debug;
+
+#define PAYLOAD "I am a fake payload; testing 123"
+
+static void set_payload(void *_buf, int plen)
+{
+	static bool payload_set;
+	char *buf = _buf;
+	int i;
+
+	if (payload_set)
+		return;
+
+	for (i = 0; i < plen; i += sizeof(PAYLOAD)-1)
+		strcpy(buf + i, PAYLOAD);
+
+	payload_set = true;
+}
 
 /*******************************************************************************
  * string conversions
@@ -550,7 +568,8 @@ static int ipv4_parse(int argc, char *argv[])
 			break;
 
 		case 'l':
-			if (str_to_int(optarg, 1, 9000, &ipv4_opts.plen) != 0) {
+			if (str_to_int(optarg, 1, MAX_BUF_SZ,
+				       &ipv4_opts.plen) != 0) {
 				log_error("invalid message length\n");
 				return -1;
 			}
@@ -582,25 +601,36 @@ static int ipv4_parse(int argc, char *argv[])
 	return 0;
 }
 
-static unsigned short ipv4_csum(const void *buf, short nwords)
+static unsigned short ipv4_csum_fold(unsigned long csum)
 {
-	const unsigned short *p = buf;
-	unsigned long csum = 0;
-	int n = nwords << 1;
-
-	for (; n > 0; n--)
-		csum += *p++;
-
 	csum = (csum >> 16) + (csum & 0xFFFF);
 	csum = ~((csum >> 16) + csum) & 0xFFFF;
 
 	return csum;
 }
 
+static unsigned long __ipv4_csum(const void *buf, short nwords,
+				 unsigned long csum)
+{
+	const unsigned short *p = buf;
+	int n = nwords << 1;
+
+	for (; n > 0; n--)
+		csum += *p++;
+
+	return csum;
+}
+
+static unsigned short ipv4_csum(const void *buf, short nwords)
+{
+	return ipv4_csum_fold(__ipv4_csum(buf, nwords, 0));
+}
+
 static unsigned short tcpudp_csum(__be32 sip, __be32 dip, unsigned char proto,
 				  const unsigned char *buf, unsigned int len)
 {
-	unsigned char tcpbuf[9000];   /* pseudo-header + tcp header */
+	unsigned char tcpbuf[12];   /* pseudo-header + tcp header */
+	unsigned long csum;
 	__u16 *plen;
 
 	memset(tcpbuf, 0, sizeof(tcpbuf));
@@ -610,9 +640,9 @@ static unsigned short tcpudp_csum(__be32 sip, __be32 dip, unsigned char proto,
 	plen = (__u16 *)&tcpbuf[10];
 	*plen = htons(len);
 
-	memcpy(tcpbuf + 12, buf, len);
-
-	return ipv4_csum(tcpbuf, (len >> 2) + 3);
+	csum = __ipv4_csum(tcpbuf, 3, 0UL);
+	csum = __ipv4_csum(buf, len >> 2, csum);
+	return ipv4_csum_fold(csum);
 }
 
 static int fill_ipv4_hdr(void *buf, int buflen,
@@ -660,6 +690,9 @@ static int fill_udp_hdr(void *buf, int buflen, struct iphdr *iph,
 
 	if (tot_len > buflen)
 		return -1;
+
+	if (opts->plen)
+		set_payload(buf + sizeof(*udph), opts->plen);
 
 	if (opts->sport)
 		udph->source = opts->sport;
@@ -727,6 +760,8 @@ static int fill_tcp_hdr(void *buf, int buflen, struct iphdr *iph,
 			tcph->ack = 1;
 		if (flags & 0xff000000)
 			tcph->psh = 1;
+
+		set_payload(buf + sizeof(*tcph), opts->plen);
 	} else {
 		__u16 flags = random() & 0xFFFF;
 
@@ -1020,7 +1055,7 @@ static int parse_args(int argc, char *argv[], struct opts *opts)
 static void gen_packets(struct opts *opts)
 {
 	int bufsize = 64*1024*1024;
-	unsigned char buf[9000];
+	unsigned char buf[MAX_BUF_SZ + 64];
 	struct ethhdr *ethhdr;
 	int hlen = sizeof(*ethhdr);
 	struct sockaddr_ll ll_addr;
