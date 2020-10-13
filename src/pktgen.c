@@ -1054,17 +1054,21 @@ static int parse_args(int argc, char *argv[], struct opts *opts)
 
 static void gen_packets(struct opts *opts)
 {
+	struct protocol *proto = opts->proto;
+	struct sockaddr_ll ll_addr = {
+		.sll_family   = PF_PACKET,
+		.sll_ifindex  = opts->ifidx,
+		.sll_pkttype  = 0,
+		.sll_halen    = ETH_ALEN,
+		.sll_hatype   = htons(proto->hatype),
+	};
 	int bufsize = 64*1024*1024;
 	unsigned char buf[MAX_BUF_SZ + 64];
 	struct ethhdr *ethhdr;
 	int hlen = sizeof(*ethhdr);
-	struct sockaddr_ll ll_addr;
-	struct protocol *proto;
 	bool use_write = false;
 	int sent_count = 0;
 	int rc, sd;
-
-	proto = opts->proto;
 
 	if (!strncmp(opts->ifname, "tap", 3)) {
 		sd = tap_open(opts->ifname, true);
@@ -1097,13 +1101,8 @@ static void gen_packets(struct opts *opts)
 		ethhdr->h_proto = htons(proto->id);
 	}
 
-	ll_addr.sll_family   = PF_PACKET;
-	ll_addr.sll_protocol = ethhdr->h_proto;
-	ll_addr.sll_ifindex  = opts->ifidx;
-	ll_addr.sll_hatype   = htons(proto->hatype);
-	ll_addr.sll_pkttype  = PACKET_OTHERHOST;
-	ll_addr.sll_halen    = ETH_ALEN;
 	memcpy(ll_addr.sll_addr, opts->dstmac, ETH_ALEN);
+	ll_addr.sll_protocol = ethhdr->h_proto;
 
 	log_msg("sending message ...");
 	while (1) {
