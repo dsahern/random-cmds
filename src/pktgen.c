@@ -633,9 +633,9 @@ static unsigned short tcpudp_csum(__be32 sip, __be32 dip, unsigned char proto,
 	unsigned long csum;
 	__u16 *plen;
 
-	memset(tcpbuf, 0, sizeof(tcpbuf));
 	memcpy(tcpbuf, &sip, 4);
 	memcpy(tcpbuf + 4, &dip, 4);
+	tcpbuf[8] = 0;
 	tcpbuf[9] = proto;
 	plen = (__u16 *)&tcpbuf[10];
 	*plen = htons(len);
@@ -707,7 +707,7 @@ static int fill_udp_hdr(void *buf, int buflen, struct iphdr *iph,
 	udph->len    = htons(tot_len);
 	udph->check  = 0;
 	udph->check = tcpudp_csum(iph->saddr, iph->daddr, IPPROTO_UDP,
-				  (const unsigned char *)udph, tot_len);
+				  buf, tot_len);
 
 	return tot_len;
 }
@@ -780,7 +780,7 @@ static int fill_tcp_hdr(void *buf, int buflen, struct iphdr *iph,
 	tcph->urg_ptr = 0;
 	tcph->check = 0;
 	tcph->check = tcpudp_csum(iph->saddr, iph->daddr, IPPROTO_TCP,
-				   (const unsigned char *)tcph, tot_len);
+				  buf, tot_len);
 
 	return tot_len;
 }
