@@ -62,6 +62,11 @@ int tap_open(const char *ifname, bool nonblock);
 
 #define __packed	__attribute__((__packed__))
 
+#if __GLIBC__ == 2 && __GLIBC_MINOR__ < 30
+#include <sys/syscall.h>
+#define gettid() syscall(SYS_gettid)
+#endif
+
 #define DEFLT_PAUSE_DELAY   100 /* usecs */
 #define ARRAY_SIZE(x) (sizeof(x)/sizeof(x[0]))
 
