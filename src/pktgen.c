@@ -609,21 +609,32 @@ static unsigned short ipv4_csum_fold(unsigned long csum)
 	return csum;
 }
 
-static unsigned long __ipv4_csum(const void *buf, short nwords,
+static unsigned long __ipv4_csum(const void *buf, int nbytes,
 				 unsigned long csum)
 {
 	const unsigned short *p = buf;
-	int n = nwords << 1;
+	int n = nbytes >> 1;
 
 	for (; n > 0; n--)
 		csum += *p++;
 
+	/* 0 pad odd bytes */
+	if (nbytes & 1) {
+		const __u8 *pbuf = buf;
+		__u8 buf2[2];
+
+		buf2[0] = pbuf[nbytes - 1];
+		buf2[1] = 0;
+		p = (unsigned short *)buf2;
+		csum += *p;
+	}
+
 	return csum;
 }
 
-static unsigned short ipv4_csum(const void *buf, short nwords)
+static unsigned short ipv4_csum(const void *buf, short nbytes)
 {
-	return ipv4_csum_fold(__ipv4_csum(buf, nwords, 0));
+	return ipv4_csum_fold(__ipv4_csum(buf, nbytes, 0));
 }
 
 static unsigned short tcpudp_csum(__be32 sip, __be32 dip, unsigned char proto,
@@ -640,8 +651,8 @@ static unsigned short tcpudp_csum(__be32 sip, __be32 dip, unsigned char proto,
 	plen = (__u16 *)&tcpbuf[10];
 	*plen = htons(len);
 
-	csum = __ipv4_csum(tcpbuf, 3, 0UL);
-	csum = __ipv4_csum(buf, len >> 2, csum);
+	csum = __ipv4_csum(tcpbuf, 12, 0UL);
+	csum = __ipv4_csum(buf, len, csum);
 	return ipv4_csum_fold(csum);
 }
 
@@ -677,7 +688,7 @@ static unsigned int fill_icmp_hdr(void *buf, int buflen)
 		}
 	}
 
-	icmph->checksum = ipv4_csum(buf, tot_len >> 2);
+	icmph->checksum = ipv4_csum(buf, tot_len);
 
 	return tot_len;
 }
@@ -841,7 +852,7 @@ static int fill_ipv4_hdr(void *buf, int buflen,
 	/* compute the checksum */
 	iph->tot_len = htons(tot_len);
 	iph->check = 0;
-	iph->check = ipv4_csum(iph, iph->ihl);
+	iph->check = ipv4_csum(iph, iph->ihl << 2);
 
 	if (opts->malformed)
 		iph->check &= (__u16) random();
