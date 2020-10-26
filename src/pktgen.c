@@ -86,19 +86,23 @@ struct vlan_ethhdr {
 //			{ 0xff, 0xff, 0xff, 0xff, 0xff, 0xff };
 static int debug;
 
-#define PAYLOAD "I am a fake payload; testing 123"
-
-static void set_payload(void *_buf, int plen)
+static void set_payload(void *_buf, int len)
 {
 	static bool payload_set;
 	char *buf = _buf;
-	int i;
+	int i, n = 0;
 
 	if (payload_set)
 		return;
 
-	for (i = 0; i < plen; i += sizeof(PAYLOAD)-1)
-		strcpy(buf + i, PAYLOAD);
+	while (len > 26) {
+		i = snprintf(buf + n, len - n, "%.26s",
+			     "abcdefghijklmnopqrstuvwxyz");
+		n += i;
+		len -= i;
+	}
+	i = snprintf(buf + n, len - n, "%.*s", len,
+		     "abcdefghijklmnopqrstuvwxyz");
 
 	payload_set = true;
 }
