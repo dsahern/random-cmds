@@ -928,6 +928,8 @@ struct opts {
 	int pause_count;
 	int pause_delay;
 
+	int cpu_offset;
+
 	struct protocol *proto;
 
 	__u16 vlan;
@@ -952,7 +954,7 @@ static int parse_main_args(int argc, char *argv[], struct opts *opts)
 
 	while (1)
 	{
-		rc = getopt(argc, argv, "hi:n:d:s:v:P:D:l:VN:R:");
+		rc = getopt(argc, argv, "hi:n:d:s:v:P:D:l:VN:R:O:");
 		if (rc < 0) break;
 		switch(rc)
 		{
@@ -995,6 +997,12 @@ static int parse_main_args(int argc, char *argv[], struct opts *opts)
 		case 'D':
 			if (str_to_int(optarg, 1, INT_MAX, &opts->pause_delay) != 0) {
 				log_error("invalid pause time\n");
+				return -1;
+			}
+			break;
+		case 'O':
+			if (str_to_int(optarg, 1, INT_MAX, &opts->cpu_offset) != 0) {
+				log_error("invalid CPU offset\n");
 				return -1;
 			}
 			break;
@@ -1251,7 +1259,7 @@ static void do_threads(struct opts *opts)
 		int rc;
 
 		targ->opts = opts;
-		targ->cpu = i;
+		targ->cpu = opts->cpu_offset + i;
 		rc = pthread_create(&id[i], &attr, thread_gen_packets, targ);
 		if (rc) {
 			log_error("pthread_create failed for thread %d: err %d\n",
