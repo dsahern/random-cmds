@@ -40,6 +40,7 @@ CMDS += $(BINDIR)tap_recv
 
 COMMON += $(OBJDIR)logging.o
 COMMON += $(OBJDIR)str_utils.o
+COMMON += $(OBJDIR)raw_input.o
 
 all: build $(CMDS)
 
