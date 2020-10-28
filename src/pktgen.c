@@ -1080,6 +1080,14 @@ static int parse_args(int argc, char *argv[], struct opts *opts)
 	return 0;
 }
 
+static void dump_packet(unsigned char *send_buf, int tot_len)
+{
+	int i;
+
+	for (i = 0; i < tot_len; i++)
+		printf("%02x%c", send_buf[i], i + 1 == tot_len ? '\n' : ' ');
+}
+
 static void gen_packets(struct opts *opts)
 {
 	struct protocol *proto = opts->proto;
@@ -1164,6 +1172,8 @@ static void gen_packets(struct opts *opts)
 			tot_len = hlen + proto_len;
 		}
 
+		if (debug >= 3)
+			dump_packet(send_buf, tot_len);
 
 		if (use_write) {
 			rc = write(sd, send_buf, tot_len);
