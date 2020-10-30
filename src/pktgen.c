@@ -56,11 +56,17 @@
 #include <errno.h>
 
 #include "str_utils.h"
+#include "raw_input.h"
 #include "logging.h"
 
 int tap_open(const char *ifname, bool nonblock);
 
 #define __packed	__attribute__((__packed__))
+
+#if __GLIBC__ == 2 && __GLIBC_MINOR__ < 30
+#include <sys/syscall.h>
+#define gettid() syscall(SYS_gettid)
+#endif
 
 #define DEFLT_PAUSE_DELAY   100 /* usecs */
 #define ARRAY_SIZE(x) (sizeof(x)/sizeof(x[0]))
@@ -922,6 +928,8 @@ struct opts {
 	int pause_count;
 	int pause_delay;
 
+	int cpu_offset;
+
 	struct protocol *proto;
 
 	__u16 vlan;
@@ -933,6 +941,10 @@ struct opts {
 
 	int dstmac_set;
 	unsigned char dstmac[ETH_ALEN];
+
+	/* Do not generate packets, use a static one */
+	unsigned char *packet_data;
+	int static_packet_len;
 };
 
 static int parse_main_args(int argc, char *argv[], struct opts *opts)
@@ -942,7 +954,7 @@ static int parse_main_args(int argc, char *argv[], struct opts *opts)
 
 	while (1)
 	{
-		rc = getopt(argc, argv, "hi:n:d:s:v:P:D:l:VN:");
+		rc = getopt(argc, argv, "hi:n:d:s:v:P:D:l:VN:R:O:");
 		if (rc < 0) break;
 		switch(rc)
 		{
@@ -988,6 +1000,12 @@ static int parse_main_args(int argc, char *argv[], struct opts *opts)
 				return -1;
 			}
 			break;
+		case 'O':
+			if (str_to_int(optarg, 1, INT_MAX, &opts->cpu_offset) != 0) {
+				log_error("invalid CPU offset\n");
+				return -1;
+			}
+			break;
 		case 'N':
 			if (str_to_int(optarg, 1, 64, &tmp) != 0) {
 				log_error("invalid number of threads (1-64)\n");
@@ -995,6 +1013,13 @@ static int parse_main_args(int argc, char *argv[], struct opts *opts)
 			}
 			opts->nthreads = tmp;
 			break;
+		case 'R': {
+			if (parse_raw_input(optarg, &opts->packet_data,
+					    &opts->static_packet_len) != 0) {
+				log_error("invalid raw input: %s\n");
+				return -1;
+			}
+		}
 		case 'V':
 			debug++;
 			break;
@@ -1063,6 +1088,14 @@ static int parse_args(int argc, char *argv[], struct opts *opts)
 	return 0;
 }
 
+static void dump_packet(unsigned char *send_buf, int tot_len)
+{
+	int i;
+
+	for (i = 0; i < tot_len; i++)
+		printf("%02x%c", send_buf[i], i + 1 == tot_len ? '\n' : ' ');
+}
+
 static void gen_packets(struct opts *opts)
 {
 	struct protocol *proto = opts->proto;
@@ -1117,7 +1150,8 @@ static void gen_packets(struct opts *opts)
 
 	log_msg("sending message ...");
 	while (1) {
-		int proto_len;
+		unsigned char *send_buf;
+		int tot_len, proto_len;
 		int ismac = 1;
 
 		if (opts->srcmac_set == 0) {
@@ -1134,14 +1168,25 @@ static void gen_packets(struct opts *opts)
 		if (opts->dstmac_set == 0)
 			random_mac(ethhdr->h_dest);
 
-		proto_len = proto->create(buf + hlen, sizeof(buf) - hlen);
-		if (proto_len <= 0) /* < 0 = err, == 0 means done */
-			break;
+		if (opts->static_packet_len) {
+			send_buf = opts->packet_data;
+			tot_len = opts->static_packet_len;
+		} else {
+			proto_len = proto->create(buf + hlen, sizeof(buf) - hlen);
+			if (proto_len <= 0) /* < 0 = err, == 0 means done */
+				break;
+
+			send_buf = buf;
+			tot_len = hlen + proto_len;
+		}
+
+		if (debug >= 3)
+			dump_packet(send_buf, tot_len);
 
 		if (use_write) {
-			rc = write(sd, buf, hlen + proto_len);
+			rc = write(sd, send_buf, tot_len);
 		} else {
-			rc = sendto(sd, buf, hlen + proto_len, 0,
+			rc = sendto(sd, send_buf, tot_len, 0,
 				    (struct sockaddr*) &ll_addr, sizeof(ll_addr));
 		}
 		if (rc < 0) {
@@ -1214,7 +1259,7 @@ static void do_threads(struct opts *opts)
 		int rc;
 
 		targ->opts = opts;
-		targ->cpu = i;
+		targ->cpu = opts->cpu_offset + i;
 		rc = pthread_create(&id[i], &attr, thread_gen_packets, targ);
 		if (rc) {
 			log_error("pthread_create failed for thread %d: err %d\n",
