@@ -23,7 +23,9 @@ add_cover_letter()
 	[ ! -d ${patch_dir} ] && return 0
 
 	cover_letter=$(ls -C1 ${patch_dir}/\[*\ 0_*\]*.eml)
+	[ ! -f "${cover_letter}" ] && cover_letter=$(ls -C1 ${patch_dir}/\[*\ 00_*\]*.eml)
 	[ ! -f "${cover_letter}" ] && return 0
+
 	$HOME/bin/cover-letter.py "${cover_letter}" >> ${file}
 }
 

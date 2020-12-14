@@ -33,7 +33,7 @@ def main( arguments ):
         if " 0/" in subject or " 00/" in subject:
             sender = msg['from']
             sender = re.sub(r'<.*>', '', sender)
-            print("%s says:\n\n" % sender)
+            print("\n%s says:\n" % sender)
             print("====================\n")
             print("%s" % msg.get_payload())
             print("====================\n")
