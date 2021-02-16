@@ -842,6 +842,7 @@ static int fill_tcp_hdr(void *buf, int buflen, struct iphdr *iph,
 {
 	struct tcphdr *tcph = (struct tcphdr *)buf;
 	int tot_len = opts->plen + sizeof(*tcph);
+	uint32_t tmp = random();
 
 	if (tot_len > buflen)
 		return -1;
@@ -849,12 +850,12 @@ static int fill_tcp_hdr(void *buf, int buflen, struct iphdr *iph,
 	if (opts->sport)
 		tcph->source = opts->sport;
 	else
-		tcph->source = htons(random() & 0xFFFF ? : 6666);
+		tcph->source = htons(tmp & 0xFFFF ? : 6666);
 
 	if (opts->dport)
 		tcph->dest = opts->dport;
 	else
-		tcph->dest = htons(random() & 0xFFFF ? : 9999);
+		tcph->dest = htons((tmp >> 16) & 0xFFFF ? : 9999);
 
 	tcph->seq     = htonl(random() & 0xFFFFFFFF ? : 12345);
 	tcph->ack_seq = htonl(random() & 0xFFFFFFFF ? : 12346);
@@ -879,16 +880,16 @@ static int fill_tcp_hdr(void *buf, int buflen, struct iphdr *iph,
 	if (opts->synflood) {
 		tcph->syn = 1;
 	} else if (opts->plen) {
-		__u16 flags = random() & 0xFFFF;
+		__u16 flags = (tmp >> 8) & 0xFFFF;
 
-		if (flags & 0x00ff0000)
+		if (flags & 0x00ff)
 			tcph->ack = 1;
-		if (flags & 0xff000000)
+		if (flags & 0xff00)
 			tcph->psh = 1;
 
 		set_payload(buf + sizeof(*tcph), opts->plen);
 	} else {
-		__u16 flags = random() & 0xFFFF;
+		__u16 flags = (tmp >> 8) & 0xFFFF;
 
 		tcph->syn = flags & 3 ? 1 : 0;
 		if (!tcph->syn && (flags & (3 << 2)))
@@ -915,6 +916,7 @@ static int fill_ipv4_hdr(void *buf, int buflen,
 {
 	struct iphdr *iph = buf;
 	unsigned int hlen = sizeof(*iph);
+	uint32_t tmp = random();
 	int tot_len = hlen;
 	int rc = 0;
 
@@ -925,9 +927,9 @@ static int fill_ipv4_hdr(void *buf, int buflen,
 
 	iph->version = 4;
 	iph->ihl     = hlen >> 2;
-	iph->ttl     = (uint8_t)random() & 63 ? : 1;
+	iph->ttl     = (uint8_t)(tmp & 63) ? : 1;
 	iph->tos     = 0;
-	iph->id      = htons(random() & 0xFFFF ? : 1234);
+	iph->id      = htons(tmp & 0xFFFF ? : 1234);
 
 	if (opts->fragments)
 		iph->frag_off = htons(IP_MF + 0x0010);
