@@ -37,6 +37,7 @@ INCLUDES = -I.
 CMDS = $(BINDIR)rps
 CMDS += $(BINDIR)pktgen
 CMDS += $(BINDIR)tap_recv
+CMDS += $(BINDIR)tap_fwd
 
 COMMON += $(OBJDIR)logging.o
 COMMON += $(OBJDIR)str_utils.o
@@ -56,7 +57,7 @@ $(BINDIR)%: $(OBJDIR)%.o $(COMMON)
 $(BINDIR)pktgen: $(OBJDIR)pktgen.o $(OBJDIR)tap.o $(COMMON)
 	$(QUIET_LINK)$(CC) $(LDFLAGS) $^ -o $@ -lpthread
 
-$(BINDIR)tap_recv: $(OBJDIR)tap_recv.o $(OBJDIR)tap.o $(OBJDIR)packet.o $(COMMON)
+$(BINDIR)tap_%: $(OBJDIR)tap_%.o $(OBJDIR)tap.o $(OBJDIR)packet.o $(COMMON)
 	$(QUIET_LINK)$(CC) $(LDFLAGS) $^ -o $@ -lpthread
 
 clean:
