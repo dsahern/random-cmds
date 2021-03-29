@@ -14,6 +14,13 @@ show_gov()
 	done
 }
 
+which cpupower >/dev/null
+if [ $? -eq 0 ]
+then
+	cpupower frequency-set -g $1
+	exit $?
+fi
+
 case $1 in
 	perf*) gov=performance;;
 	power*) gov=powersave;;
