@@ -131,7 +131,7 @@ if args.skip_zero:
 if args.dt:
     dt = args.dt[0]
 
-show_stat = direction + "[0-9]_" + stat
+show_stat = direction + "[0-9]+_" + stat
 cmd = "ethtool -S " + dev + " | egrep '" + show_stat + "'"
 nqueue = get_num_queue(cmd)
 
