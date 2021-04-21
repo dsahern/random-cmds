@@ -134,7 +134,7 @@ dev = "eth0"
 skip_zero = 0
 show_delta = 0
 direction = "rx"
-stat = "packets"
+stat = "packets|rx[0-9]+_bytes"
 dt = 1
 
 parser = argparse.ArgumentParser()
