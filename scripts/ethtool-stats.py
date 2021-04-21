@@ -140,9 +140,9 @@ dt = 1
 parser = argparse.ArgumentParser()
 parser.add_argument("--dev", type=str, nargs=1,
                     help='name of netdevice')
-parser.add_argument("--rx-stat", type=str, nargs=1,
+parser.add_argument("--rx", type=str, nargs=1,
                     help='suffix in rx${queue}_${stat} of per-queue to show')
-parser.add_argument("--tx-stat", type=str, nargs=1,
+parser.add_argument("--tx", type=str, nargs=1,
                     help='suffix in tx${queue}_${stat} of per-queue to show')
 parser.add_argument("--delta", action='store_true',
                     help='show delta stats')
@@ -155,15 +155,15 @@ args = parser.parse_args()
 if args.dev:
     dev = args.dev[0]
 
-if args.rx_stat and args.tx_stat:
+if args.rx and args.tx:
     print("Only 1 stat can be specified")
     exit(1)
 
-if args.rx_stat:
-    stat = args.rx_stat[0]
+if args.rx:
+    stat = args.rx[0]
 
-if args.tx_stat:
-    stat = args.tx_stat[0]
+if args.tx:
+    stat = args.tx[0]
     direction = "tx"
 
 if args.delta:
