@@ -13,8 +13,10 @@ from datetime import datetime
 import argparse
 import subprocess
 import re
+from array import array
 
 stats_regex = re.compile(r'\d+')
+labels = {}
 
 # parse stats name and extract queue number. string is expected to
 # have the format '[r,t]x[0-9]+_[a-z]*' and we extract the queue number
@@ -27,9 +29,19 @@ def get_qnum( name ):
     return q
 
 
+def get_label( name ):
+    p,n = name.split('_', 1)
+    return n
+
+
+def get_col( name ):
+    return int(labels[name])
+
+
 # returns highest queue number seen in the stats output
 def get_num_queue( cmd ):
     queue = 0
+    col = 0
     p = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE)
     for line in p.stdout.readlines():
         # convert line as a byte stream to a string
@@ -40,52 +52,84 @@ def get_num_queue( cmd ):
         if q > queue:
             queue = q
 
+        if q == 0:
+            l = get_label(name)
+            labels[l] = col
+            col = col + 1
+
     # number of queues is 1 + max; starts at 0
     return queue + 1
 
 
 # run ethtool -S and save current value per queue
 def read_stats( cmd ):
+    for q in range(nqueue):
+        curr[q][ncols] = 0
+
     p = subprocess.Popen(cmd, shell=True, stdout=subprocess.PIPE)
     for line in p.stdout.readlines():
         lstr = line.decode()
         lstr.strip()
         name, stat = lstr.split(":", 2)
         q = get_qnum(name)
-        curr[q] = int(stat)
+        l = get_label(name)
+        j = get_col(l)
+        curr[q][j] = int(stat)
+        if curr[q][j] != 0:
+            curr[q][ncols] = 1
 
 
 ################################################################################
 
 def compute_delta( ):
     for q in range(nqueue):
-        delta[q] = curr[q] - prev[q]
+        delta[q][ncols] = 0
+        for j in range(ncols):
+            delta[q][j] = curr[q][j] - prev[q][j]
+            delta[q][ncols] += delta[q][j]
 
 
 def rotate_data( ):
     for q in range(nqueue):
-        prev[q] = curr[q]
+        for j in range(ncols):
+            prev[q][j] = curr[q][j]
 
 
 def print_hdr( now ):
     os.system('clear')
     print("%s dev=%s stat=%s" % (now.strftime("%m/%d/%Y, %H:%M:%S"), dev, show_stat))
+    print("cpu", end='')
+    for k in labels.keys():
+        print("  %16s" % k, end='')
+    print("")
+
 
 def print_stats( now ):
     print_hdr(now)
     for q in range(nqueue):
-        if skip_zero == 0 or curr[q] > 0:
-            print("%3u  %s" % (q, curr[q]))
+        if skip_zero == 0 or curr[q][ncols] > 0:
+            print("%3u" % q, end='')
+
+            for j in range(ncols):
+                print("  %16u" % curr[q][j], end='')
+
+            print("")
 
 
 def print_delta( now ):
     print_hdr(now)
     for q in range(nqueue):
-        if skip_zero == 0 or delta[q] > 0:
-            print("%3u  %10u" % (q, delta[q]))
+        if skip_zero == 0 or delta[q][ncols] > 0:
+            print("%3u" % q, end='')
+
+            for j in range(ncols):
+                print("  %16u" % delta[q][j], end='')
+
+            print("")
 
 ################################################################################
 
+# defaults
 dev = "eth0"
 skip_zero = 0
 show_delta = 0
@@ -134,10 +178,11 @@ if args.dt:
 show_stat = direction + "[0-9]+_" + stat
 cmd = "ethtool -S " + dev + " | egrep '" + show_stat + "'"
 nqueue = get_num_queue(cmd)
+ncols = len(labels)
 
-prev = [ 0 for i in range(nqueue) ]
-curr = [ 0 for i in range(nqueue) ]
-delta = [ 0 for i in range(nqueue) ]
+prev  = [ [0 for i in range(ncols + 1)] for j in range(nqueue) ]
+curr  = [ [0 for i in range(ncols + 1)] for j in range(nqueue) ]
+delta = [ [0 for i in range(ncols + 1)] for j in range(nqueue) ]
 
 read_stats(cmd)
 rotate_data()
