@@ -98,7 +98,7 @@ def rotate_data( ):
 def print_hdr( now ):
     os.system('clear')
     print("%s dev=%s stat=%s" % (now.strftime("%m/%d/%Y, %H:%M:%S"), dev, show_stat))
-    print("cpu", end='')
+    print("queue", end='')
     for k in labels.keys():
         print("  %16s" % k, end='')
     print("")
@@ -108,7 +108,7 @@ def print_stats( now ):
     print_hdr(now)
     for q in range(nqueue):
         if skip_zero == 0 or curr[q][ncols] > 0:
-            print("%3u" % q, end='')
+            print("%5u" % q, end='')
 
             for j in range(ncols):
                 print("  %16u" % curr[q][j], end='')
