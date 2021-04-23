@@ -120,7 +120,7 @@ def print_delta( now ):
     print_hdr(now)
     for q in range(nqueue):
         if skip_zero == 0 or delta[q][ncols] > 0:
-            print("%3u" % q, end='')
+            print("%5u" % q, end='')
 
             for j in range(ncols):
                 print("  %16u" % delta[q][j], end='')
