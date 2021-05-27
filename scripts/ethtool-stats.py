@@ -21,7 +21,7 @@ labels = {}
 # parse stats name and extract queue number. string is expected to
 # have the format '[r,t]x[0-9]+_[a-z]*' and we extract the queue number
 def get_qnum( name ):
-    q = -1
+    q = 0
     m = stats_regex.findall(name)
     if m:
         q = int(m[0])
@@ -96,7 +96,10 @@ def rotate_data( ):
 
 
 def print_hdr( now ):
-    os.system('clear')
+    if do_clear == 1:
+        os.system('clear')
+    else:
+        print("")
     print("%s dev=%s stat=%s" % (now.strftime("%m/%d/%Y, %H:%M:%S"), dev, show_stat))
     print("queue", end='')
     for k in labels.keys():
@@ -133,9 +136,9 @@ def print_delta( now ):
 dev = "eth0"
 skip_zero = 0
 show_delta = 0
-direction = "rx"
 stat = "packets|rx[0-9]+_bytes"
 dt = 1
+do_clear = 1
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--dev", type=str, nargs=1,
@@ -144,27 +147,49 @@ parser.add_argument("--rx", type=str, nargs=1,
                     help='suffix in rx${queue}_${stat} of per-queue to show')
 parser.add_argument("--tx", type=str, nargs=1,
                     help='suffix in tx${queue}_${stat} of per-queue to show')
+parser.add_argument("--nonq", type=str, nargs=1,
+                    help='stats to show')
 parser.add_argument("--delta", action='store_true',
                     help='show delta stats')
 parser.add_argument("--skip-zero", action='store_true',
                     help='skip queue where stat is zero')
 parser.add_argument("--dt", type=int, nargs=1,
                     help='sampling rate (default 1 sec)')
+parser.add_argument("--noclear", action='store_true',
+                    help='do not clear screen between samples')
 args = parser.parse_args()
 
 if args.dev:
     dev = args.dev[0]
 
-if args.rx and args.tx:
-    print("Only 1 stat can be specified")
-    exit(1)
+nstat = 0
+if args.noclear:
+    do_clear = 0
 
 if args.rx:
+    nstat += 1
     stat = args.rx[0]
+    show_stat = "rx[0-9]+_" + stat
+    cmd = "ethtool -S " + dev + " | egrep '" + show_stat + "'"
 
 if args.tx:
+    nstat += 1
     stat = args.tx[0]
-    direction = "tx"
+    show_stat = "tx[0-9]+_" + stat
+    cmd = "ethtool -S " + dev + " | egrep '" + show_stat + "'"
+
+if args.nonq:
+    nstat += 1
+    show_stat = args.nonq[0]
+    cmd = "ethtool -S " + dev + " | egrep '" + show_stat + "'"
+
+if nstat > 1:
+    print("Only 1 stat group can be specified")
+    exit(1)
+
+if nstat == 0:
+    show_stat = "rx[0-9]+_" + stat
+    cmd = "ethtool -S " + dev + " | egrep '" + show_stat + "'"
 
 if args.delta:
     show_delta = 1
@@ -175,8 +200,6 @@ if args.skip_zero:
 if args.dt:
     dt = args.dt[0]
 
-show_stat = direction + "[0-9]+_" + stat
-cmd = "ethtool -S " + dev + " | egrep '" + show_stat + "'"
 nqueue = get_num_queue(cmd)
 ncols = len(labels)
 
