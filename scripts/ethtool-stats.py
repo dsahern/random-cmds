@@ -134,19 +134,19 @@ def print_delta( now ):
 
 # defaults
 dev = "eth0"
+prefix="rx"
 skip_zero = 0
 show_delta = 0
-stat = "packets|rx[0-9]+_bytes"
 dt = 1
 do_clear = 1
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--dev", type=str, nargs=1,
                     help='name of netdevice')
-parser.add_argument("--rx", type=str, nargs=1,
-                    help='suffix in rx${queue}_${stat} of per-queue to show')
-parser.add_argument("--tx", type=str, nargs=1,
-                    help='suffix in tx${queue}_${stat} of per-queue to show')
+parser.add_argument("--prefix", type=str, nargs=1,
+                    help='prefix of per-queue to show')
+parser.add_argument("--stat", type=str, nargs=1,
+                    help='suffix in ${prefix}${queue}_${stat} of per-queue to show')
 parser.add_argument("--nonq", type=str, nargs=1,
                     help='stats to show')
 parser.add_argument("--delta", action='store_true',
@@ -166,16 +166,13 @@ nstat = 0
 if args.noclear:
     do_clear = 0
 
-if args.rx:
-    nstat += 1
-    stat = args.rx[0]
-    show_stat = "rx[0-9]+_" + stat
-    cmd = "ethtool -S " + dev + " | egrep '" + show_stat + "'"
+if args.prefix:
+    prefix = args.prefix[0]
 
-if args.tx:
+if args.stat:
     nstat += 1
-    stat = args.tx[0]
-    show_stat = "tx[0-9]+_" + stat
+    stat = args.stat[0]
+    show_stat = prefix + "[0-9]+_" + stat
     cmd = "ethtool -S " + dev + " | egrep '" + show_stat + "'"
 
 if args.nonq:
@@ -188,7 +185,11 @@ if nstat > 1:
     exit(1)
 
 if nstat == 0:
-    show_stat = "rx[0-9]+_" + stat
+    if args.prefix:
+        show_stat = prefix + "[0-9]_"
+    else:
+        show_stat = prefix + "[0-9]+_packets|" + prefix + "[0-9]+_bytes"
+
     cmd = "ethtool -S " + dev + " | egrep '" + show_stat + "'"
 
 if args.delta:
