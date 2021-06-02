@@ -19,7 +19,7 @@ delta = [ [0 for i in range(7)] for j in range(ncpu) ]
 def read_softnet( f ):
     cpu = 0
     for line in f:
-        tot, dro, squ, j1, j2, j3, j4, j5, col, rps, flo = line.split(" ", 11)
+        tot, dro, squ, j1, j2, j3, j4, j5, col, rps, flo = line.split(" ")[0:11]
 
         curr[cpu][0] = int(tot, 16)
         curr[cpu][1] = int(dro, 16)
