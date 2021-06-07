@@ -101,7 +101,8 @@ def print_hdr( now ):
     else:
         print("")
     print("%s dev=%s stat=%s" % (now.strftime("%m/%d/%Y, %H:%M:%S"), dev, show_stat))
-    print("queue", end='')
+    if qstats == 1:
+        print("queue", end='')
     for k in labels.keys():
         print("  %16s" % k, end='')
     print("")
@@ -111,7 +112,8 @@ def print_stats( now ):
     print_hdr(now)
     for q in range(nqueue):
         if skip_zero == 0 or curr[q][ncols] > 0:
-            print("%5u" % q, end='')
+            if qstats == 1:
+                print("%5u" % q, end='')
 
             for j in range(ncols):
                 print("  %16u" % curr[q][j], end='')
@@ -123,7 +125,8 @@ def print_delta( now ):
     print_hdr(now)
     for q in range(nqueue):
         if skip_zero == 0 or delta[q][ncols] > 0:
-            print("%5u" % q, end='')
+            if qstats == 1:
+                print("%5u" % q, end='')
 
             for j in range(ncols):
                 print("  %16u" % delta[q][j], end='')
@@ -139,6 +142,7 @@ skip_zero = 0
 show_delta = 0
 dt = 1
 do_clear = 1
+qstats = 1
 
 parser = argparse.ArgumentParser()
 parser.add_argument("--dev", type=str, nargs=1,
@@ -176,6 +180,7 @@ if args.stat:
     cmd = "ethtool -S " + dev + " | egrep '" + show_stat + "'"
 
 if args.nonq:
+    qstats = 0
     nstat += 1
     show_stat = args.nonq[0]
     cmd = "ethtool -S " + dev + " | egrep '" + show_stat + "'"
