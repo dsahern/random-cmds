@@ -38,6 +38,7 @@ CMDS = $(BINDIR)rps
 CMDS += $(BINDIR)pktgen
 CMDS += $(BINDIR)tap_recv
 CMDS += $(BINDIR)tap_fwd
+CMDS += $(BINDIR)cpumon
 
 COMMON += $(OBJDIR)logging.o
 COMMON += $(OBJDIR)str_utils.o
