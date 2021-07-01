@@ -115,7 +115,7 @@ static void print_cpu_stats(const struct raw_cpu_stat *current,
 	float dj;
 
 	/* CPU counters are in jiffies. */
-	if (current->sum < prev->sum)
+	if (current->sum <= prev->sum)
 		return;
 
 	dj = (float) (current->sum - prev->sum);
