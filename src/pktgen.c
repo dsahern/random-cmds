@@ -32,6 +32,7 @@
 #include <linux/if_ether.h>
 #include <linux/if_packet.h>
 #include <linux/sockios.h>
+#include <sys/sysinfo.h>
 #include <sys/socket.h>
 #include <sys/ioctl.h>
 #include <net/ethernet.h>
@@ -1111,7 +1112,8 @@ static int parse_main_args(int argc, char *argv[], struct opts *opts)
 			}
 			break;
 		case 'O':
-			if (str_to_int(optarg, 1, INT_MAX, &opts->cpu_offset) != 0) {
+			if (str_to_int(optarg, 0, get_nprocs() - 1,
+				       &opts->cpu_offset) != 0) {
 				log_error("invalid CPU offset\n");
 				return -1;
 			}
