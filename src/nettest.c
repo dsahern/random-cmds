@@ -72,6 +72,7 @@ struct sock_args {
 
 	int use_setsockopt;
 	int use_cmsg;
+	int use_zc;
 	const char *dev;
 	int ifindex;
 
@@ -360,6 +361,18 @@ static int check_device(int sd, struct sock_args *args)
 	return 0;
 }
 
+static int set_zc(int sd)
+{
+	int one = 1;
+	int rc;
+
+	rc = setsockopt(sd, SOL_SOCKET, SO_ZEROCOPY, &one, sizeof(one));
+	if (rc < 0)
+		log_err_errno("setsockopt(SO_ZEROCOPY)");
+
+	return rc;
+}
+
 static int set_pktinfo_v4(int sd)
 {
 	int one = 1;
@@ -599,6 +612,39 @@ static int show_sockstat(int sd, struct sock_args *args)
 	return rc;
 }
 
+static void tcp_zc_complete(int sd)
+{
+	const int max_batch = 16;
+	static int batch;
+
+	if (++batch == max_batch) {
+		struct msghdr msg = { };
+		int ret, num = 0;
+
+		do {
+			ret = recvmsg(sd, &msg, MSG_ERRQUEUE);
+			if (ret == -1 && errno == EAGAIN)
+				break;
+			if (ret == -1)
+				printf("errqueue failed: %d\n", errno);
+			num++;
+		} while (msg.msg_flags & MSG_CTRUNC);
+
+		batch = 0;
+	}
+}
+
+static int send_zc(int sd)
+{
+	tcp_zc_complete(sd);
+
+	if (send(sd, msg, msglen, MSG_ZEROCOPY) < 0) {
+		log_err_errno("Failed to send msg to peer using ZC api");
+		return 1;
+	}
+	return 0;
+}
+
 static int get_index_from_cmsg(struct msghdr *m)
 {
 	struct cmsghdr *cm;
@@ -719,7 +765,10 @@ again:
 static int send_msg(int sd, void *addr, socklen_t alen, struct sock_args *args)
 {
 	if (args->type == SOCK_STREAM) {
-		if (write(sd, msg, msglen) < 0) {
+		if (args->use_zc) {
+			if (send_zc(sd))
+				return 1;
+		} else if (write(sd, msg, msglen) < 0) {
 			log_err_errno("write failed sending msg to peer");
 			return 1;
 		}
@@ -1158,6 +1207,9 @@ static int lsock_init(struct sock_args *args)
 	if (args->bind_test_only)
 		goto out;
 
+	if (args->use_zc && set_zc(sd))
+		goto err;
+
 	if (args->type == SOCK_STREAM && listen(sd, 1) < 0) {
 		log_err_errno("listen failed");
 		goto err;
@@ -1334,6 +1386,9 @@ static int connectsock(void *addr, socklen_t alen, struct sock_args *args)
 		goto out;
 
 	if (args->password && tcp_md5sig(sd, addr, alen, args))
+		goto err;
+
+	if (args->use_zc && set_zc(sd))
 		goto err;
 
 	if (args->bind_test_only)
@@ -1568,7 +1623,7 @@ static char *random_msg(int len)
 	return m;
 }
 
-#define GETOPT_STR  "sr:l:p:t:g:P:DRn:M:m:d:SCi6L:0:1:2:Fbq"
+#define GETOPT_STR  "sr:l:p:t:g:P:DRn:M:m:d:SCi6L:0:1:2:FbqZ"
 
 static void print_usage(char *prog)
 {
@@ -1592,6 +1647,7 @@ static void print_usage(char *prog)
 	"    -S            use setsockopt (IP_UNICAST_IF or IP_MULTICAST_IF)\n"
 	"                  to set device binding\n"
 	"    -C            use cmsg and IP_PKTINFO to specify device binding\n"
+	"    -Z            use zerocopy Tx API to send packet (TCP only)\n"
 	"\n"
 	"    -L len        send random message of given length\n"
 	"    -n num        number of times to send message\n"
@@ -1700,6 +1756,9 @@ int main(int argc, char *argv[])
 			break;
 		case 'C':
 			args.use_cmsg = 1;
+			break;
+		case 'Z':
+			args.use_zc = 1;
 			break;
 		case 'd':
 			args.dev = optarg;
