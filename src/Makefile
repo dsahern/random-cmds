@@ -32,13 +32,14 @@ endif
 CC = gcc
 CFLAGS = -O2 -g -Wall
 LDFLAGS = -static
-INCLUDES = -I.
+INCLUDES = -I. -Iinclude/uapi
 
 CMDS = $(BINDIR)rps
 CMDS += $(BINDIR)pktgen
 CMDS += $(BINDIR)tap_recv
 CMDS += $(BINDIR)tap_fwd
 CMDS += $(BINDIR)cpumon
+CMDS += $(BINDIR)nettest
 
 COMMON += $(OBJDIR)logging.o
 COMMON += $(OBJDIR)str_utils.o
