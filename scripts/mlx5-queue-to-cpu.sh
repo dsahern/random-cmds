@@ -2,14 +2,14 @@
 #
 # show the CPUs each mlx5 rx queue is handled on
 
-printf " cpu  MLX queue\n"
-cat /proc/interrupts | \
-awk '{
-	if ($NF ~ /mlx5_comp/) {
-		for (i = 2; i < NF-2; ++i) {
-			if ($i != 0)
-				printf " %3d", i - 2
-		}
-		printf "  %s\n", $NF
-	}
-}' | sort -k 1,1 -n
+printf "%8s %8s %8s\n" "queue" "irq" "cpu"
+grep 'mlx5_comp' /proc/interrupts | \
+while read irq line
+do
+	irq=${irq/:/}
+	cpu=$(cat /proc/irq/${irq}/smp_affinity_list)
+	q=${line/*mlx5_comp/}
+	q=${q/@pci*/}
+
+	printf "%8s %8s %8s\n" $q $irq $cpu
+done
