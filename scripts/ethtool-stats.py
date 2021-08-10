@@ -191,7 +191,7 @@ if nstat > 1:
 
 if nstat == 0:
     if args.prefix:
-        show_stat = prefix + "[0-9]_"
+        show_stat = prefix + "[0-9]+_"
     else:
         show_stat = prefix + "[0-9]+_packets|" + prefix + "[0-9]+_bytes"
 
