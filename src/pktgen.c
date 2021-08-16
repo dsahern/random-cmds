@@ -49,10 +49,10 @@
 #include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <signal.h>
 #include <time.h>
 #include <unistd.h>
 #include <inttypes.h>
-#include <pthread.h>
 #include <sched.h>
 #include <errno.h>
 
@@ -1325,9 +1325,8 @@ struct thread_arg {
 	struct opts *opts;
 };
 
-static void *thread_gen_packets(void *_arg)
+static void *thread_gen_packets(struct thread_arg *arg)
 {
-	struct thread_arg *arg = _arg;
 	pid_t tid = gettid();
 	cpu_set_t cset;
 
@@ -1344,8 +1343,7 @@ static void *thread_gen_packets(void *_arg)
 static void do_threads(struct opts *opts)
 {
 	struct thread_arg *targs;
-	pthread_attr_t attr;
-	pthread_t *id;
+	pid_t *id;
 	int i;
 
 	id = calloc(opts->nthreads, sizeof(*id));
@@ -1360,32 +1358,26 @@ static void do_threads(struct opts *opts)
 		return;
 	}
 
-	if (pthread_attr_init(&attr) != 0) {
-		log_err_errno("pthread_attr_init failed");
-		return;
-	}
-
 	for (i = 0; i < opts->nthreads; ++i) {
 		struct thread_arg *targ = &targs[i];
-		int rc;
 
 		targ->opts = opts;
 		targ->cpu = opts->cpu_offset + i;
-		rc = pthread_create(&id[i], &attr, thread_gen_packets, targ);
-		if (rc) {
-			log_error("pthread_create failed for thread %d: err %d\n",
-				  i, rc);
+		id[i] = fork();
+		if (id[i] > 0) {
+			thread_gen_packets(targ);
+		} else if (id[i] < 0) {
+			log_error("fork failed for thread %d\n", i);
+			id[i] = 0;
 			break;
 		}
 	}
 
-	pthread_attr_destroy(&attr);
+	pause();
 
 	for (i = 0; i < opts->nthreads; ++i) {
-		void *rc;
-
 		if (id[i] > 0)
-			pthread_join(id[i], &rc);
+			kill(id[i], SIGTERM);
 	}
 
 	free(id);
