@@ -812,6 +812,7 @@ static int fill_udp_hdr(void *buf, int buflen, struct iphdr *iph,
 {
 	struct udphdr *udph = (struct udphdr *)buf;
 	int tot_len = opts->plen + sizeof(*udph);
+	uint32_t tmp = random();
 
 	if (tot_len > buflen)
 		return -1;
@@ -822,12 +823,12 @@ static int fill_udp_hdr(void *buf, int buflen, struct iphdr *iph,
 	if (opts->sport)
 		udph->source = opts->sport;
 	else
-		udph->source = htons(random() & 0xFFFF ? : 6666);
+		udph->source = htons(tmp & 0xFFFF ? : 6666);
 
 	if (opts->dport)
 		udph->dest = opts->dport;
 	else
-		udph->dest = htons(random() & 0xFFFF ? : 9999);
+		udph->dest = htons((tmp >> 16) & 0xFFFF ? : 9999);
 
 	udph->len    = htons(tot_len);
 	udph->check  = 0;
