@@ -122,16 +122,31 @@ def print_stats( now ):
 
 
 def print_delta( now ):
+    nq = nqueue
+    if qstats == 1:
+        nq -= 1
+        for j in range(ncols):
+            delta[nqueue-1][j] = 0
+
     print_hdr(now)
-    for q in range(nqueue):
+    for q in range(nq):
         if skip_zero == 0 or delta[q][ncols] > 0:
             if qstats == 1:
                 print("%5u" % q, end='')
 
             for j in range(ncols):
+                if qstats == 1:
+                    delta[nqueue-1][j] += delta[q][j]
                 print("  %16u" % delta[q][j], end='')
 
             print("")
+
+    if qstats == 1:
+        print("  sum", end='')
+        for j in range(ncols):
+            print("  %16u" % delta[nqueue-1][j], end='')
+
+        print("")
 
 ################################################################################
 
@@ -208,6 +223,10 @@ if args.dt:
 
 nqueue = get_num_queue(cmd)
 ncols = len(labels)
+
+# add 1 for a sum row
+if qstats == 1 and show_delta == 1:
+    nqueue = nqueue + 1
 
 prev  = [ [0 for i in range(ncols + 1)] for j in range(nqueue) ]
 curr  = [ [0 for i in range(ncols + 1)] for j in range(nqueue) ]
