@@ -8,6 +8,7 @@
 #include <string.h>
 #include <unistd.h>
 #include <stdlib.h>
+#include <stdbool.h>
 #include <fcntl.h>
 #include <errno.h>
 
@@ -15,6 +16,8 @@
 
 #define SYS_STATS_FILE    "/proc/stat"
 #define STATS_PERIOD 1000000
+
+static bool skip_idle;
 
 /* data in cpuN lines in /proc/stat
  * numbers are in units of jiffies
@@ -102,7 +105,7 @@ static const char *timestamp(struct timeval tv, char *date, int dlen)
 	return date;
 }
 
-static void print_cpu_stats(const struct raw_cpu_stat *current,
+static void print_cpu_stats(int cpu, const struct raw_cpu_stat *current,
 			    const struct raw_cpu_stat *prev)
 {
 	float user;
@@ -128,8 +131,11 @@ static void print_cpu_stats(const struct raw_cpu_stat *current,
 	irq     = ((float)(current->irq     - prev->irq)     * 100) / dj;
 	softirq = ((float)(current->softirq - prev->softirq) * 100) / dj;
 
-	printf("%8.1f %8.1f %8.1f %8.1f %8.1f %8.1f %8.1f\n",
-		user, system, nice, iowait, irq, softirq, idle);
+	if (skip_idle && idle == 100.0)
+		return;
+
+	printf("%3d %8.1f %8.1f %8.1f %8.1f %8.1f %8.1f %8.1f\n",
+		cpu, user, system, nice, iowait, irq, softirq, idle);
 }
 
 static void print_stats(const struct raw_stats *current,
@@ -137,10 +143,8 @@ static void print_stats(const struct raw_stats *current,
 {
 	int i;
 
-	for (i = 0; i < ncpus; ++i) {
-		printf("%3d ", i);
-		print_cpu_stats(&current->cstat[i], &prev->cstat[i]);
-	}
+	for (i = 0; i < ncpus; ++i)
+		print_cpu_stats(i, &current->cstat[i], &prev->cstat[i]);
 
 	printf("\n");
 }
@@ -252,26 +256,39 @@ static void read_sysstats(struct raw_stats *stats)
 	return;
 }
 
+static void usage(const char *argv0)
+{
+	fprintf(stderr, "usage: %s OPTS\n"
+	        "\n"
+		"    -i                    skip print of idle cpus\n"
+	        "    -s sample-interval    time between samples in usec\n"
+	        "                          default is %d.\n"
+	        , argv0, STATS_PERIOD);
+}
+
 int main(int argc, char *argv[])
 {
 	struct raw_stats s1, s2, *current = &s1, *prev = &s2, *tmp;
 	int stats_period = STATS_PERIOD;
 	struct timeval tv_current;
 	char date[64];
+	int rc;
+        extern char *optarg;
 
-	if (argc > 1) {
-		if (!strcmp(argv[1], "-h") || !strcmp(argv[1], "-?")) {
-			fprintf(stderr, "usage: %s [microseconds]\n"
-			        "\n"
-			        "microseconds is the time between samples.\n"
-			        "default is %d.\n",
-			        argv[0], stats_period);
-			return 1;
-		}
-
-		stats_period = atoi(argv[1]);
-		if (stats_period == 0) {
-			fprintf(stderr, "invalid sample period\n");
+	while ((rc = getopt(argc, argv, "his:"))  != -1) {
+		switch (rc) {
+		case 'i':
+			skip_idle = true;
+			break;
+		case 's':
+			stats_period = atoi(optarg);
+			if (stats_period == 0) {
+				fprintf(stderr, "invalid sample period\n");
+				return 1;
+			}
+			break;
+		case 'h':
+			usage(argv[0]);
 			return 1;
 		}
 	}
