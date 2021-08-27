@@ -9,6 +9,7 @@
 #include <unistd.h>
 #include <stdlib.h>
 #include <stdbool.h>
+#include <signal.h>
 #include <fcntl.h>
 #include <errno.h>
 
@@ -45,6 +46,14 @@ struct raw_stats
 };
 
 static int ncpus;
+
+#define USECS_PER_SEC  1000000
+
+static inline void convert_usec_timeval(struct timeval *tv, unsigned int dt)
+{
+	tv->tv_sec = dt / USECS_PER_SEC;
+	tv->tv_usec = dt - tv->tv_sec * USECS_PER_SEC;
+}
 
 static int parsestr(char *str, const char *delims, char *fields[], int nmax)
 {
@@ -266,10 +275,15 @@ static void usage(const char *argv0)
 	        , argv0, STATS_PERIOD);
 }
 
+static void sighdlr(int sig)
+{
+}
+
 int main(int argc, char *argv[])
 {
 	struct raw_stats s1, s2, *current = &s1, *prev = &s2, *tmp;
-	int stats_period = STATS_PERIOD;
+	unsigned int stats_period = STATS_PERIOD;
+	struct itimerval tval = { };
 	struct timeval tv_current;
 	char date[64];
 	int rc;
@@ -296,10 +310,19 @@ int main(int argc, char *argv[])
 	setlinebuf(stdout);
 	ncpus = get_nprocs();
 
+	signal(SIGALRM, sighdlr);
+
+	convert_usec_timeval(&tval.it_interval, stats_period);
+	convert_usec_timeval(&tval.it_value, stats_period);
+	if (setitimer(ITIMER_REAL, &tval, NULL)) {
+		fprintf(stderr, "setitimer failed: %s\n", strerror(errno));
+		return 1;
+	}
+
 	read_sysstats(prev);
 	while (1)
 	{
-		usleep(stats_period);
+		pause();
 
 		read_sysstats(current);
 
