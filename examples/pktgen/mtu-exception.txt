@@ -1,0 +1,24 @@
+
+# generate IPv4, ICMP, fragmentation needed messages. Target must
+# have UDP port open (SPORT below) for Linux to process ICMP.
+# eg., in target:
+#     nc -u -p 3333 -l
+
+# original packet sent from a port to a destination
+SPORT=3333
+DPORT=6666
+
+# IP and mac of ICMP target
+DEST=100.115.92.202
+DMAC=52:54:00:12:34:56
+
+for i in $(seq 1 254)
+do
+	for j in $(seq 1 254)
+	do
+		src/bin/pktgen -i vm-tap -d ${DMAC} -s 52:54:00:12:34:67 -n 1 \
+		    ipv4 -d ${DEST} -s 10.10.10.10 \
+		    icmp -T unreach -C frag -m 1300 -d 10.1.$i.$j -s ${DEST} -u -P ${SPORT} -p ${DPORT}
+		[ $? -ne 0 ] && exit 1
+	done
+done
