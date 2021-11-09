@@ -1019,6 +1019,7 @@ static void main_usage(void)
 	"  -P num      pause every num packets (default no pause)\n"
 	"  -D delay    usec to pause every num packets (default is %d)\n"
 	"  -N num      spawn num threads each generating packets based on config (default is 1)\n"
+	"  -p prio     set socket priority\n"
 	"\n"
 	"  protocol    protocol packet to send.\n\n"
 	"Valid protocols:", DEFLT_PAUSE_DELAY);
@@ -1039,6 +1040,7 @@ struct opts {
 	int pause_count;
 	int pause_delay;
 
+	int priority;
 	int cpu_offset;
 
 	struct protocol *proto;
@@ -1065,7 +1067,7 @@ static int parse_main_args(int argc, char *argv[], struct opts *opts)
 
 	while (1)
 	{
-		rc = getopt(argc, argv, "hi:n:d:s:v:P:D:l:VN:R:O:");
+		rc = getopt(argc, argv, "hi:n:d:s:v:P:D:l:VN:R:O:p");
 		if (rc < 0) break;
 		switch(rc)
 		{
@@ -1075,6 +1077,12 @@ static int parse_main_args(int argc, char *argv[], struct opts *opts)
 		case 'n':
 			if (str_to_int(optarg, 0, INT_MAX, &opts->nmsgs) != 0) {
 				log_error("invalid number of messages to send\n");
+				return -1;
+			}
+			break;
+		case 'p':
+			if (str_to_int(optarg, 0, INT_MAX, &opts->priority) != 0) {
+				log_error("invalid socket priority\n");
 				return -1;
 			}
 			break;
@@ -1239,6 +1247,11 @@ static void gen_packets(struct opts *opts)
 
 		if (setsockopt(sd, SOL_SOCKET, SO_SNDBUF, &bufsize, sizeof(bufsize)) < 0)
 			perror("setsockopt(SO_SNDBUF)");
+
+		if (opts->priority &&
+		    setsockopt(sd, SOL_SOCKET, SO_PRIORITY, &opts->priority,
+			       sizeof(opts->priority)))
+			perror("setsockopt(SO_PRIORITY)");
 	}
 
 	ethhdr = (struct ethhdr *) buf;
