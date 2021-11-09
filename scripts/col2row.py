@@ -48,6 +48,6 @@ for line in f:
 jmax = j
 for i in range(imax):
     for j in range(jmax):
-        print("%30s " % d[i][j], end='')
+        print("%20s " % d[i][j], end='')
 
     print("")
