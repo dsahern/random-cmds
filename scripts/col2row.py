@@ -3,6 +3,7 @@
 # Flip rows and columns in a file
 
 import argparse
+import fileinput
 
 num_row=200
 num_col=200
@@ -22,15 +23,14 @@ if args.rows:
 if args.cols:
     num_row=args.cols[0]
 
-if not args.file:
-    print("File name required");
-    exit(1)
-
-fname = args.file[0]
+if args.file:
+    fname = args.file[0]
+    f = open(fname, 'r')
+else:
+    f = fileinput.input()
 
 d = [ [ "" for i in range(num_row) ] for j in range(num_col) ]
 
-f = open(fname, 'r')
 j = 0
 imax = 0
 for line in f:
