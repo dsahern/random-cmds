@@ -350,6 +350,8 @@ struct {
 	__u8		type;
 	__u8		code;
 	__be16		mtu;
+	__be16		id;
+	__u16		seq;
 	struct ipv4_opts ipv4_opts;
 } icmp_opts;
 
@@ -382,6 +384,14 @@ static int valid_icmp_type_code(__u8 icmp_type, __u8 icmp_code)
 			log_error("unknown icmp code\n");
 			return -1;
 		}
+		break;
+	case ICMP_ECHO:
+		if (icmp_code) {
+			log_error("invalid icmp code for echo messages\n");
+			return -1;
+		}
+		icmp_opts.id = htons(666);
+		icmp_opts.seq = 666;
 		break;
 	default:
 		log_error("unknown icmp type\n");
@@ -426,6 +436,8 @@ static int icmp_type_parse(const char *str)
 	} else {
 		if (!strcmp(str, "unreach")) {
 			icmp_opts.type = ICMP_DEST_UNREACH;
+		} else if (!strcmp(str, "echo")) {
+			icmp_opts.type = ICMP_ECHO;
 		} else {
 			log_error("Unknown icmp type string\n");
 			return -1;
@@ -611,6 +623,7 @@ static int ipv4_parse(int argc, char *argv[])
 	}
 	return 0;
 }
+
 /*
  * following checksum code is from kernel,
  * - arch/x86/lib/csum-partial_64.c and
@@ -775,10 +788,55 @@ static int fill_ipv4_hdr(void *buf, int buflen,
 
 static int ipv4_nest;
 
-static unsigned int fill_icmp_hdr(void *buf, int buflen)
+static void set_icmp_payload(void *buf, int plen, __be16 seq)
+{
+	unsigned char counter = 48;
+	unsigned char *pbuf = buf;
+	__be16 *pbuf_be = buf;
+
+	*pbuf_be = seq;
+	if (plen <= 2)
+		return;
+
+	pbuf += 2;
+	plen -= 2;
+
+	if (plen) {
+		*pbuf = 0xde;
+		pbuf++;
+		plen--;
+	}
+	if (plen) {
+		*pbuf = 0xad;
+		pbuf++;
+		plen--;
+	}
+	if (plen) {
+		*pbuf = 0xca;
+		pbuf++;
+		plen--;
+	}
+	if (plen) {
+		*pbuf = 0xfe;
+		pbuf++;
+		plen--;
+	}
+
+	while (plen) {
+		*pbuf = counter;
+		pbuf++;
+		plen--;
+		if (++counter >= 122)
+			counter = 48;
+	}
+}
+
+static unsigned int fill_icmp_hdr(void *buf, int buflen,
+				  const struct ipv4_opts *opts)
 {
 	struct icmphdr *icmph = (struct icmphdr *)buf;
 	unsigned int tot_len = sizeof(*icmph);
+	int plen;
 
 	icmph->checksum = 0;
 	if (ipv4_nest) {
@@ -800,6 +858,20 @@ static unsigned int fill_icmp_hdr(void *buf, int buflen)
 						 &icmp_opts.ipv4_opts);
 			break;
 		}
+		break;
+	case ICMP_ECHO:
+		icmph->un.echo.id = icmp_opts.id;
+		icmph->un.echo.sequence = htons(icmp_opts.seq++);
+		if (opts->plen) {
+			plen = opts->plen;
+			if (buflen - tot_len < plen)
+				plen = buflen - tot_len;
+
+			set_icmp_payload(buf + sizeof(*icmph), plen,
+					 icmph->un.echo.sequence);
+			tot_len += plen;
+		}
+		break;
 	}
 
 	icmph->checksum = ipv4_csum(buf, tot_len);
@@ -957,7 +1029,7 @@ static int fill_ipv4_hdr(void *buf, int buflen,
 		rc = fill_udp_hdr(buf, buflen, iph, opts);
 		break;
 	case IPPROTO_ICMP:
-		rc = fill_icmp_hdr(buf, buflen);
+		rc = fill_icmp_hdr(buf, buflen, opts);
 		break;
 	}
 
