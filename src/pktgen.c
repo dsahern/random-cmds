@@ -87,11 +87,17 @@ struct vlan_ethhdr {
 //			{ 0xff, 0xff, 0xff, 0xff, 0xff, 0xff };
 static int debug;
 
-static void set_payload(void *_buf, int len)
+static void set_payload(void *_buf, int len, uint32_t w)
 {
 	static bool payload_set;
 	char *buf = _buf;
 	int i, n = 0;
+
+	if (w) {
+		uint32_t *p = _buf;
+
+		*p = w;
+	}
 
 	if (payload_set)
 		return;
@@ -343,6 +349,8 @@ struct ipv4_opts {
 	__be32		dip;
 	__be16		sport;
 	__be16		dport;
+	__u32		seq;
+	__u32		ack_seq;
 	int		plen;
 } ipv4_opts;
 
@@ -530,6 +538,8 @@ static void ipv4_usage(void)
 	"  -d addr       Destination address\n"
 	"  -t            TCP transport protocol\n"
 	"  -S            TCP syn packets only\n"
+	"  -X seq        TCP sequence number to use\n"
+	"  -Y ack        TCP ack sequence number to use\n"
 	"  -u            UDP transport protocol\n"
 	"  -p            destination port\n"
 	"  -P            source port\n"
@@ -548,7 +558,7 @@ static int ipv4_parse(int argc, char *argv[])
 
 	extern char *optarg;
 
-	while ((rc = getopt(argc, argv, "hms:d:p:P:tul:fMS")) != -1) {
+	while ((rc = getopt(argc, argv, "hms:d:p:P:tul:fMSX:Y:")) != -1) {
 		switch(rc) {
 		case 's':
 			if (str_to_ip(optarg, &ipv4_opts.sip) != 0) {
@@ -582,6 +592,20 @@ static int ipv4_parse(int argc, char *argv[])
 			break;
 		case 't':
 			ipv4_opts.protocol = IPPROTO_TCP;
+			break;
+		case 'X':
+			if (str_to_int_base(optarg, 1, INT_MAX, &val, 10)) {
+				log_error("Invalid sequence number\n");
+				return -1;
+			}
+			ipv4_opts.seq = val;
+			break;
+		case 'Y':
+			if (str_to_int_base(optarg, 1, INT_MAX, &val, 10)) {
+				log_error("Invalid ACK sequence number\n");
+				return -1;
+			}
+			ipv4_opts.ack_seq = val;
 			break;
 		case 'u':
 			ipv4_opts.protocol = IPPROTO_UDP;
@@ -890,7 +914,7 @@ static int fill_udp_hdr(void *buf, int buflen, struct iphdr *iph,
 		return -1;
 
 	if (opts->plen)
-		set_payload(buf + sizeof(*udph), opts->plen);
+		set_payload(buf + sizeof(*udph), opts->plen, 0);
 
 	if (opts->sport)
 		udph->source = opts->sport;
@@ -930,8 +954,17 @@ static int fill_tcp_hdr(void *buf, int buflen, struct iphdr *iph,
 	else
 		tcph->dest = htons((tmp >> 16) & 0xFFFF ? : 9999);
 
-	tcph->seq     = htonl(random() & 0xFFFFFFFF ? : 12345);
-	tcph->ack_seq = htonl(random() & 0xFFFFFFFF ? : 12346);
+	if (ipv4_opts.seq) {
+		tcph->seq = htonl(ipv4_opts.seq);
+		ipv4_opts.seq += opts->plen;
+	} else {
+		tcph->seq = htonl(random() & 0xFFFFFFFF ? : 12345);
+	}
+
+	if (ipv4_opts.ack_seq)
+		tcph->ack_seq = htonl(ipv4_opts.ack_seq);
+	else
+		tcph->ack_seq = htonl(random() & 0xFFFFFFFF ? : 12346);
 
 	tcph->doff = sizeof(*tcph) >> 2;
 
@@ -960,7 +993,7 @@ static int fill_tcp_hdr(void *buf, int buflen, struct iphdr *iph,
 		if (flags & 0xff00)
 			tcph->psh = 1;
 
-		set_payload(buf + sizeof(*tcph), opts->plen);
+		set_payload(buf + sizeof(*tcph), opts->plen, ntohl(tcph->seq));
 	} else {
 		__u16 flags = (tmp >> 8) & 0xFFFF;
 
