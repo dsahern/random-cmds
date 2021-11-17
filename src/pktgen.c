@@ -404,8 +404,8 @@ static int valid_icmp_type_code(__u8 icmp_type, __u8 icmp_code)
 			log_error("invalid icmp code for echo messages\n");
 			return -1;
 		}
-		icmp_opts.id = htons(666);
-		icmp_opts.seq = 666;
+		icmp_opts.id = htons(0x666);
+		icmp_opts.seq = 0x666;
 		break;
 	default:
 		log_error("unknown icmp type\n");
