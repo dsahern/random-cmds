@@ -90,26 +90,32 @@ static int debug;
 static void set_payload(void *_buf, int len, uint32_t w)
 {
 	static bool payload_set;
-	char *buf = _buf;
-	int i, n = 0;
+	char *buf = _buf, c = 'a';
+	int i;
 
 	if (w) {
 		uint32_t *p = _buf;
 
 		*p = w;
+		buf += 4;
+		len -= 4;
 	}
 
 	if (payload_set)
 		return;
 
-	while (len > 26) {
-		i = snprintf(buf + n, len - n, "%.26s",
+	while (len >= 26) {
+		i = snprintf(buf, len, "%.26s",
 			     "abcdefghijklmnopqrstuvwxyz");
-		n += i;
 		len -= i;
+		buf += i;
 	}
-	i = snprintf(buf + n, len - n, "%.*s", len,
-		     "abcdefghijklmnopqrstuvwxyz");
+
+	while (len) {
+		*buf = c++;
+		len--;
+		buf++;
+	}
 
 	payload_set = true;
 }
@@ -594,14 +600,14 @@ static int ipv4_parse(int argc, char *argv[])
 			ipv4_opts.protocol = IPPROTO_TCP;
 			break;
 		case 'X':
-			if (str_to_int_base(optarg, 1, INT_MAX, &val, 10)) {
+			if (str_to_int_base(optarg, -INT_MAX, INT_MAX, &val, 10)) {
 				log_error("Invalid sequence number\n");
 				return -1;
 			}
 			ipv4_opts.seq = val;
 			break;
 		case 'Y':
-			if (str_to_int_base(optarg, 1, INT_MAX, &val, 10)) {
+			if (str_to_int_base(optarg, -INT_MAX, INT_MAX, &val, 10)) {
 				log_error("Invalid ACK sequence number\n");
 				return -1;
 			}
@@ -993,7 +999,7 @@ static int fill_tcp_hdr(void *buf, int buflen, struct iphdr *iph,
 		if (flags & 0xff00)
 			tcph->psh = 1;
 
-		set_payload(buf + sizeof(*tcph), opts->plen, ntohl(tcph->seq));
+		set_payload(buf + sizeof(*tcph), opts->plen, tcph->seq);
 	} else {
 		__u16 flags = (tmp >> 8) & 0xFFFF;
 
