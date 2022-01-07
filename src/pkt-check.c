@@ -5,6 +5,7 @@
 #include <linux/if_ether.h>
 #include <linux/ip.h>
 #include <linux/tcp.h>
+#include <linux/icmp.h>
 #include <stdbool.h>
 #include <string.h>
 #include <unistd.h>
@@ -68,6 +69,70 @@ static void tcp_seq_check(u_char *udata, const struct pcap_pkthdr *pkthdr,
 	}
 
 	printf("\n");
+	return;
+}
+
+static void icmp_seq_check(u_char *udata, const struct pcap_pkthdr *pkthdr,
+			   const u_char *packet)
+{
+	static unsigned int pkt_count;
+	static __u16 icmp_seq_expected;
+
+	struct ethhdr *ethh;
+	struct icmphdr *icmph;
+	__u16 seq, seq_data;
+	struct iphdr *iph;
+	int iphlen;
+	__u32 len;
+
+	pkt_count++;
+
+	len = pkthdr->len;
+	if (len < (sizeof(*ethh) + sizeof(*iph)))
+		return;
+
+	ethh = (struct ethhdr *) packet;
+	if (ntohs(ethh->h_proto) != ETH_P_IP)
+		return;
+
+	iph = (struct iphdr *)(packet + sizeof(*ethh));
+	if (iph->protocol != IPPROTO_ICMP)
+		return;
+
+	iphlen = iph->ihl << 2;
+	if (len < (sizeof(*ethh) + iphlen + sizeof(*icmph)))
+		goto out;
+
+	len -= sizeof(*ethh) + iphlen + sizeof(*icmph);
+
+	icmph = (struct icmphdr *)((void *) iph + iphlen);
+	switch(icmph->type) {
+	case ICMP_ECHO:
+		printf("[%5u] len %6u iph: len %6u id %5u",
+		       pkt_count, pkthdr->len, ntohs(iph->tot_len),
+		       ntohs(iph->id));
+
+		seq = ntohs(icmph->un.echo.sequence);
+		printf(" echo id %5u seq %5u",
+			ntohs(icmph->un.echo.id), seq);
+
+		if (len > 4) {
+			seq_data = ntohs(*((__u16 *)(icmph + 1)));
+			printf(" seq_data %5u", seq_data);
+
+			if (seq != seq_data)
+				printf(" seq mismatch");
+
+			if (icmp_seq_expected && icmp_seq_expected != seq_data)
+				printf(" drops");
+
+			icmp_seq_expected = seq_data + 1;
+		}
+		printf("\n");
+		break;
+	}
+
+out:
 	return;
 }
 
@@ -148,7 +213,8 @@ static void usage(const char *prog)
 	fprintf(stderr, 
 		"\nusage: %s -f file\n\n"
 		"   -f  file with packets to examine\n"
-		"   -i  check continuity of ip header id\n"
+		"   -i  check continuity of icmp sequence number\n"
+		"   -I  check continuity of ip header id\n"
 		"   -t  check continuity of tcp sequence numbers\n"
 		"\n", prog);
 }
@@ -163,12 +229,15 @@ int main(int argc, char *argv[])
 	pcap_t *ph;                    /* pcap handle */
 	int rc;
 
-	while ((rc = getopt(argc, argv, "f:it")) != -1) {
+	while ((rc = getopt(argc, argv, "f:iIt")) != -1) {
 		switch(rc) {
 		case 'f':
 			pcapfile = optarg;
 			break;
 		case 'i':
+			packet_handler = icmp_seq_check;
+			break;
+		case 'I':
 			packet_handler = ip_id_check;
 			break;
 		case 't':
