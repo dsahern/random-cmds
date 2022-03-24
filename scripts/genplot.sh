@@ -13,6 +13,7 @@ usage: ${0##*/} OPTS
 
 OPTS:
 	-f FILE     File to plot
+	-o PNG      Output file to write png image (default: ${PNGFILE})
 	-X COL      Field in file to use for x-axis (default: ${COLX})
 	-Y COL      Field in file to use for y-axis (default: ${COLY})
 	-x x1:x2    X-range to use
@@ -23,10 +24,11 @@ EOF
 
 ################################################################################
 # main
-while getopts :f:x:y:X:Y:s: o
+while getopts :f:x:y:X:Y:s:o: o
 do
 	case $o in
 		f) FILE=$OPTARG;;
+		o) PNGFILE=$OPTARG;;
 		s) SEP=$OPTARG;;
 		x) XRANGE="[$OPTARG]";;
 		y) YRANGE="[$OPTARG]";;
@@ -46,7 +48,7 @@ fi
 #
 # create commands file
 #
-echo "set terminal png enhanced size 640,480" > ${CMDSFILE}
+echo "set terminal png enhanced size 1024,768" > ${CMDSFILE}
 
 if [ -n "${SEP}" ]
 then
@@ -69,9 +71,12 @@ else
 	echo "set autoscale y" >> ${CMDSFILE}
 fi
 
+echo "set output \"${PNGFILE}\"" >> ${CMDSFILE}
+
 echo "plot \"${FILE}\" using ${COLX}:${COLY} with lines" >> ${CMDSFILE}
 
-echo "q" |  gnuplot ${CMDSFILE} - > ${PNGFILE}
+echo "q" |  gnuplot ${CMDSFILE}
+[ $? -ne 0 ] && exit 1
 
 #
 # display using image magick
