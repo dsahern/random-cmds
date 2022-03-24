@@ -95,12 +95,16 @@ def rotate_data( ):
             prev[q][j] = curr[q][j]
 
 
-def print_hdr( now ):
+def print_timestamp( now ):
     if do_clear == 1:
         os.system('clear')
+        print("%s dev=%s stat=%s" % (now.strftime("%H:%M:%S"), dev, show_stat))
     else:
-        print("")
-    print("%s dev=%s stat=%s" % (now.strftime("%m/%d/%Y, %H:%M:%S"), dev, show_stat))
+        print("%s " % now.strftime("%H:%M:%S"), end='')
+
+def print_hdr( ):
+    if do_clear != 1:
+        print("%8s " % "", end='')
     if qstats == 1:
         print("queue", end='')
     for k in labels.keys():
@@ -109,7 +113,6 @@ def print_hdr( now ):
 
 
 def print_stats( now ):
-    print_hdr(now)
     for q in range(nqueue):
         if skip_zero == 0 or curr[q][ncols] > 0:
             if qstats == 1:
@@ -128,7 +131,6 @@ def print_delta( now ):
         for j in range(ncols):
             delta[nqueue-1][j] = 0
 
-    print_hdr(now)
     for q in range(nq):
         if skip_zero == 0 or delta[q][ncols] > 0:
             if qstats == 1:
@@ -232,13 +234,31 @@ prev  = [ [0 for i in range(ncols + 1)] for j in range(nqueue) ]
 curr  = [ [0 for i in range(ncols + 1)] for j in range(nqueue) ]
 delta = [ [0 for i in range(ncols + 1)] for j in range(nqueue) ]
 
+n = 0
+
+if do_clear == 0:
+    print_hdr()
+
 read_stats(cmd)
 rotate_data()
+
 while 1:
     time.sleep(dt)
     now = datetime.now()
 
     read_stats(cmd)
+
+    if do_clear == 0:
+        n = n + 1
+        if n == 16:
+            print_hdr()
+            n = 0
+
+    print_timestamp( now )
+
+    if do_clear == 1:
+        print_hdr()
+
     if show_delta == 0:
         print_stats(now)
     else:
