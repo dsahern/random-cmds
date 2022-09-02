@@ -47,7 +47,9 @@ def rotate_data( ):
 
 
 def print_softnet( now ):
-    os.system('clear')
+    if do_clear == 1:
+        os.system('clear')
+
     print("%s" % (now.strftime("%m/%d/%Y, %H:%M:%S")))
     print("%3s  %10s  %10s  %10s  %10s  %10s" % \
           ("cpu", "total", "dropped", "squeezed", "rps", "flow_lmt"))
@@ -57,7 +59,9 @@ def print_softnet( now ):
 
 
 def print_delta( now ):
-    os.system('clear')
+    if do_clear == 1:
+        os.system('clear')
+
     print("\n%s" % (now.strftime("%m/%d/%Y, %H:%M:%S")))
     print("%3s  %10s  %10s  %10s  %10s  %10s" % \
           ("cpu", "total", "dropped", "squeezed", "rps", "flow_lmt"))
@@ -81,6 +85,7 @@ def print_delta_cpu(cpu, now):
 skip_zero = 0
 show_delta = 0
 show_cpu = -1
+do_clear = 1
 dt = 1
 
 parser = argparse.ArgumentParser()
@@ -92,6 +97,8 @@ parser.add_argument("--skip-zero", action='store_true',
                     help='skip zero rows')
 parser.add_argument("--dt", type=int, nargs=1,
                     help='sampling rate (default 1 sec)')
+parser.add_argument("--noclear", action='store_true',
+                    help='do not clear screen between samples')
 args = parser.parse_args()
 
 if args.cpu:
@@ -111,6 +118,9 @@ if args.skip_zero:
 
 if args.dt:
     dt = args.dt[0]
+
+if args.noclear:
+    do_clear = 0
 
 f = open('/proc/net/softnet_stat', 'r')
 
