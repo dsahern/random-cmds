@@ -16,7 +16,7 @@ usage: ${0##*/} OPTS file
     -m addr      base address where dso is mapped
     -o offset    DSO offset to run objdump
     -s symbol    symbol of interest (nm to look up addr)
-    -S           add source option (-S) to objdump
+    -S           omit source option to objdump
 
 examples:
     ${0##*/} -s symbol  file
@@ -56,7 +56,7 @@ sym=
 offset=0
 map_start=0
 addr=0
-OBJ_OPTS="-rld"
+OBJ_OPTS="-Srld"
 
 if [ -e "${1}" ]; then
 	file=$1
@@ -70,7 +70,7 @@ do
         m) map_start=$OPTARG;;
         s) parse_sym $OPTARG;;
         o) offset=$OPTARG;;
-        S) OBJ_OPTS="$OBJ_OPTS -S";;
+        S) OBJ_OPTS=${OBJ_OPTS/S/};;
         *) usage; exit 1;;
     esac
 done
