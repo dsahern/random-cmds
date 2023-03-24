@@ -1,4 +1,4 @@
-/* 
+/*
  * walks /proc and shows process scheduling parameters and
  * cpu and memory affinities.
  *
@@ -49,7 +49,7 @@ static int str_to_int(const char *str, int min, int max, int *value)
 static const char *policy_int2str(int policy)
 {
 	const char *str;
-	
+
 	switch(policy) {
 	case SCHED_OTHER:
 		str = "other";
@@ -76,7 +76,7 @@ static int get_sched(pid_t pid, int *policy, int *prio, bool rt_only)
 
 	*policy = sched_getscheduler(pid);
 	if (*policy < 0) {
-		fprintf(stderr, 
+		fprintf(stderr,
 			"failed to get scheduler priority for process %d: %s\n",
 			pid, strerror(errno));
 		return 0;
@@ -252,7 +252,7 @@ static void walk_process(pid_t pid)
 	const char *pid_str;
 	int policy, prio;
 
-	if (snprintf(taskpath, sizeof(taskpath), 
+	if (snprintf(taskpath, sizeof(taskpath),
 		     "/proc/%d/task", pid) >= sizeof(taskpath)) {
 		fprintf(stderr, "path too long for process %d\n", pid);
 		return;
