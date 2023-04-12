@@ -98,9 +98,9 @@ def rotate_data( ):
 def print_timestamp( now ):
     if do_clear == 1:
         os.system('clear')
-        print("%s dev=%s stat=%s" % (now.strftime("%H:%M:%S"), dev, show_stat))
+        print("%8s dev=%s stat=%s" % (now.strftime("%H:%M:%S"), dev, show_stat))
     else:
-        print("%s " % now.strftime("%H:%M:%S"), end='')
+        print("%8s " % now.strftime("%H:%M:%S"), end='')
 
 def print_hdr( ):
     if do_clear != 1:
@@ -115,6 +115,7 @@ def print_hdr( ):
 def print_stats( now ):
     for q in range(nqueue):
         if skip_zero == 0 or curr[q][ncols] > 0:
+            print("%8s " % "", end='')
             if qstats == 1:
                 print("%5u" % q, end='')
 
@@ -133,6 +134,9 @@ def print_delta( now ):
 
     for q in range(nq):
         if skip_zero == 0 or delta[q][ncols] > 0:
+            if q != 0:
+                print("%8s " % "", end='')
+
             if qstats == 1:
                 print("%5u" % q, end='')
 
@@ -144,7 +148,7 @@ def print_delta( now ):
             print("")
 
     if qstats == 1:
-        print("  sum", end='')
+        print("%8s   sum" % "", end='')
         for j in range(ncols):
             print("  %16u" % delta[nqueue-1][j], end='')
 
