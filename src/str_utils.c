@@ -5,6 +5,7 @@
  * David Ahern <dsahern@gmail.com>
  */
 #include <linux/if_ether.h>
+#include <arpa/inet.h>
 #include <net/if.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -156,4 +157,28 @@ void print_mac(const __u8 *mac, bool reverse)
 	else
 		printf("%.02x:%.02x:%.02x:%.02x:%.02x:%.02x",
 		       mac[0], mac[1], mac[2], mac[3], mac[4], mac[5]);
+}
+
+int str_to_addr(const char *str, void *sa, unsigned int alen)
+{
+	struct sockaddr_in6 *s6 = sa;
+	struct sockaddr_in *s = sa;
+
+	if (alen < sizeof(*s))
+		return -EINVAL;
+
+	if (inet_pton(AF_INET, str, &s->sin_addr)) {
+		s->sin_family = AF_INET;
+		return 0;
+	}
+
+	if (alen < sizeof(*s6))
+		return -EINVAL;
+
+	if (inet_pton(AF_INET6, str, &s6->sin6_addr)) {
+		s6->sin6_family = AF_INET6;
+		return 0;
+	}
+
+	return -EINVAL;
 }

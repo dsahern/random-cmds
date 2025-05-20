@@ -9,6 +9,7 @@ int str_to_ulong(const char *str, unsigned long *ul);
 int str_to_ulong_base(const char *str, unsigned long *ul, int base);
 int str_to_ullong(const char *str, unsigned long long *ul);
 int str_to_mac(const char *str, unsigned char *mac);
+int str_to_addr(const char *str, void *sa, unsigned int alen);
 int get_ifidx(const char *arg);
 
 int parsestr(char *str, char *delims, char *fields[], int nmax);
