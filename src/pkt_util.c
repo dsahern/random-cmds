@@ -18,7 +18,7 @@
 #include <unistd.h>
 #include <errno.h>
 
-#include "pkt.h"
+#include "pkt_util.h"
 #include "roce_hdr.h"
 #include "logging.h"
 

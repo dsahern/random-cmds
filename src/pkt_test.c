@@ -22,7 +22,7 @@
 #include <unistd.h>
 #include <errno.h>
 
-#include "pkt.h"
+#include "pkt_util.h"
 #include "pkt_test.h"
 #include "logging.h"
 
