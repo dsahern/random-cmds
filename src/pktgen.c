@@ -355,6 +355,7 @@ struct ipv4_opts {
 	__be32		dip;
 	__be16		sport;
 	__be16		dport;
+	__u16		ipv4_id;
 	__u32		seq;
 	__u32		ack_seq;
 	int		plen;
@@ -563,6 +564,8 @@ static int ipv4_parse(int argc, char *argv[])
 	int rc, val;
 
 	extern char *optarg;
+
+	ipv4_opts.ipv4_id = 666;
 
 	while ((rc = getopt(argc, argv, "hms:d:p:P:tul:fMSX:Y:")) != -1) {
 		switch(rc) {
@@ -992,12 +995,17 @@ static int fill_tcp_hdr(void *buf, int buflen, struct iphdr *iph,
 	if (opts->synflood) {
 		tcph->syn = 1;
 	} else if (opts->plen) {
-		__u16 flags = (tmp >> 8) & 0xFFFF;
+		static int iter = 8;
 
-		if (flags & 0x00ff)
+		//__u16 flags = (tmp >> 8) & 0xFFFF;
+
+		//if (flags & 0x00ff)
 			tcph->ack = 1;
-		if (flags & 0xff00)
+		//if (flags & 0xff00)
+		if (--iter == 0) {
 			tcph->psh = 1;
+			iter = 44;
+		}
 
 		set_payload(buf + sizeof(*tcph), opts->plen, tcph->seq);
 	} else {
@@ -1014,7 +1022,7 @@ static int fill_tcp_hdr(void *buf, int buflen, struct iphdr *iph,
 			tcph->psh = 1;
 	}
 
-	tcph->window = htons(5840); /* htons(0x7FFF); */
+	tcph->window = htons(4); /* htons(0x7FFF); */
 	tcph->urg_ptr = 0;
 	tcph->check = 0;
 	tcph->check = tcpudp_csum(iph->saddr, iph->daddr, IPPROTO_TCP,
@@ -1028,7 +1036,6 @@ static int fill_ipv4_hdr(void *buf, int buflen,
 {
 	struct iphdr *iph = buf;
 	unsigned int hlen = sizeof(*iph);
-	uint32_t tmp = random();
 	int tot_len = hlen;
 	int rc = 0;
 
@@ -1039,9 +1046,11 @@ static int fill_ipv4_hdr(void *buf, int buflen,
 
 	iph->version = 4;
 	iph->ihl     = hlen >> 2;
-	iph->ttl     = (uint8_t)(tmp & 63) ? : 1;
+	iph->ttl     = 64;
 	iph->tos     = 0;
-	iph->id      = htons(tmp & 0xFFFF ? : 1234);
+
+	iph->id = htons(ipv4_opts.ipv4_id);
+	ipv4_opts.ipv4_id++;
 
 	if (opts->fragments)
 		iph->frag_off = htons(IP_MF + 0x0010);
@@ -1108,11 +1117,11 @@ struct protocol {
 };
 
 struct protocol all_protocols[] = {
-		{.name = "arp",      .id = ETHERTYPE_ARP,     .hatype = ARPHRD_ETHER,
-		 .usage = arp_usage, .parse_args = arp_parse, .create = arp_create},
+	{.name = "arp",      .id = ETHERTYPE_ARP,     .hatype = ARPHRD_ETHER,
+	 .usage = arp_usage, .parse_args = arp_parse, .create = arp_create},
 
-		{.name = "ipv4",      .id = ETHERTYPE_IP,     .hatype = ARPHRD_ETHER,
-		 .usage = ipv4_usage, .parse_args = ipv4_parse, .create = ipv4_create},
+	{.name = "ipv4",      .id = ETHERTYPE_IP,     .hatype = ARPHRD_ETHER,
+	 .usage = ipv4_usage, .parse_args = ipv4_parse, .create = ipv4_create},
 };
 
 static void main_usage(void)
@@ -1433,6 +1442,9 @@ static void gen_packets(struct opts *opts)
 		sent_count++;
 		if (opts->nmsgs && (sent_count >= opts->nmsgs))
 			break;
+
+		printf("sent %d of %d; pause_count %d delay %d\n",
+			sent_count, opts->nmsgs, opts->pause_count, opts->pause_delay);
 
 		/* take a breather so as to not overwhelm the netdevice
 		 * (overrun stat)

@@ -63,6 +63,9 @@ $(BINDIR)pktgen: $(OBJDIR)pktgen.o $(OBJDIR)tap.o $(COMMON)
 $(BINDIR)pkt-check: $(OBJDIR)pkt-check.o
 	$(QUIET_LINK)$(CC) $^ -o $@ -lpcap
 
+$(BINDIR)pkt-test: $(OBJDIR)pkt_test.o $(OBJDIR)roce_test.o $(COMMON)
+	$(QUIET_LINK)$(CC) $(LDFLAGS) $^ -o $@
+
 $(BINDIR)tap_%: $(OBJDIR)tap_%.o $(OBJDIR)tap.o $(OBJDIR)packet.o $(COMMON)
 	$(QUIET_LINK)$(CC) $(LDFLAGS) $^ -o $@ -lpthread
 

@@ -23,7 +23,7 @@
 #include <errno.h>
 
 #include "pkt.h"
-#include "tests.h"
+#include "pkt_test.h"
 #include "logging.h"
 
 #define PATH_NET_TUN "/dev/net/tun"

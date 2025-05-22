@@ -4,7 +4,7 @@
 #include <string.h>
 
 #include "roce_hdr.h"
-#include "tests.h"
+#include "pkt_test.h"
 #include "logging.h"
 
 static inline bool before(__u32 seq1, __u32 seq2)
