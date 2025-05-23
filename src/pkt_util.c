@@ -164,10 +164,11 @@ static void timestamp(void)
 	printf("%s", buf);
 }
 
-void pkt_print(const struct pkt *pkt)
+void pkt_print(const struct pkt *pkt, const char *desc)
 {
 	timestamp();
 
+	printf("%s fd %d", desc, pkt->fd_in);
 	if (pkt->iph)
 		print_ipv4(pkt);
 	else if (pkt->ip6h)
@@ -374,26 +375,6 @@ static int pkt_parse(struct pkt *pkt)
 	return rc;
 }
 
-struct pkt *pkt_copy(struct pkt *pkt_in)
-{
-	struct pkt *pkt;
-
-	pkt = calloc(1, sizeof(*pkt));
-	if (pkt) {
-		*pkt = *pkt_in;
-
-		pkt->data = calloc(1, pkt_in->alloc_len);
-		if (!pkt->data) {
-			free(pkt);
-			return NULL;
-		}
-
-		memcpy(pkt->data, pkt_in->data, pkt_in->len);
-	}
-
-	return pkt;
-}
-
 struct pkt *pkt_alloc(unsigned int max_len)
 {
 	struct pkt *pkt;
@@ -415,6 +396,26 @@ void pkt_free(struct pkt *pkt)
 {
 	free(pkt->data);
 	free(pkt);
+}
+
+struct pkt *pkt_copy(struct pkt *pkt_in)
+{
+	struct pkt *pkt;
+
+	pkt = pkt_alloc(pkt_in->alloc_len);
+	if (pkt) {
+		memcpy(pkt->data, pkt_in->data, pkt_in->len);
+		pkt->len = pkt_in->len;
+		pkt->fd_in = pkt_in->fd_in;
+		pkt->fd_out = pkt_in->fd_out;
+
+		if (pkt_parse(pkt)) {
+			pkt_free(pkt);
+			pkt = NULL;
+		}
+	}
+
+	return pkt;
 }
 
 int pkt_read(int fd, unsigned int max_len, struct pkt **ppkt)

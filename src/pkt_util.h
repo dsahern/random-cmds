@@ -12,8 +12,9 @@ int pkt_write(struct pkt *pkt);
 int pkt_write_and_release(struct pkt *pkt);
 
 struct pkt *pkt_alloc(unsigned int max_len);
+struct pkt *pkt_copy(struct pkt *pkt);
 void pkt_free(struct pkt *pkt);
-void pkt_print(const struct pkt *pkt);
+void pkt_print(const struct pkt *pkt, const char *desc);
 
 bool pkt_is_roce(struct pkt *pkt);
 bool pkt_is_motcp(struct pkt *pkt);
