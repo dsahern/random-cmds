@@ -4,7 +4,7 @@
 #include <string.h>
 
 #include "roce_hdr.h"
-#include "pkt_test.h"
+#include "roce_test.h"
 #include "logging.h"
 
 static inline bool before(__u32 seq1, __u32 seq2)
@@ -122,7 +122,6 @@ void roce_test(struct pkt *pkt, struct pkt *pkt_out[64], unsigned int *outlen)
 		log_msg("Holding MIDDLE packet\n");
 		if (qp->pkt_hold) {
 			log_msg("Sending prior MIDDLE packet\n");
-			pkt_print(qp->pkt_hold);
 			pkt_out[0] = qp->pkt_hold;
 			*outlen = 1;
 		}
@@ -144,6 +143,9 @@ void roce_test(struct pkt *pkt, struct pkt *pkt_out[64], unsigned int *outlen)
 		qp->pkt_hold = NULL;
 		qp->last_pkt_reversed = true;
 		return;
+	case IBV_OPCODE_RC_ACKNOWLEDGE:
+		// can drop ACK packets as well
+		break;
 	}
 
 send_pkt:

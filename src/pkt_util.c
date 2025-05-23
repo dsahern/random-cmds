@@ -19,22 +19,12 @@
 #include <errno.h>
 
 #include "pkt_util.h"
+#include "motcp_hdr.h"
 #include "roce_hdr.h"
 #include "logging.h"
 
-/* size of the TCP option when using the experimental kind */
-#define TCPOLEN_EXP_ENF_BTH     (4 + sizeof(struct enf_bth))
-
 #define IP_MF           0x2000          /* Flag: "More Fragments"       */
 #define IP_OFFSET       0x1FFF          /* "Fragment Offset" part       */
-
-#define TCPOPT_NOP              1       /* Padding */
-#define TCPOPT_EOL              0       /* End of options */
-#define TCPOPT_EXP              254     /* Experimental */
-
-#define TCPOPT_EXP_ENF_BTH_EXID         0xEFAB
-
-#define ROCE_V2_UDP_DPORT      4791
 
 enum pkt_type {
 	PKT_TYPE_UNSET,
@@ -47,6 +37,7 @@ enum pkt_type {
 
 struct pkt {
 	unsigned char *data;
+	unsigned char *payload;
 	unsigned int len;
 	unsigned int alloc_len;
 
@@ -253,7 +244,9 @@ static int parse_tcp(struct pkt *pkt, unsigned char *buf, unsigned int len)
 	if (hlen)
 		parse_tcp_opt(pkt, tcph + 1, hlen);
 
-	return 0;
+	len -= hlen;
+
+	return len;
 }
 
 static int parse_rocev2(struct pkt *pkt, unsigned char *buf, unsigned int len)
@@ -261,16 +254,17 @@ static int parse_rocev2(struct pkt *pkt, unsigned char *buf, unsigned int len)
 	struct roce_bth *bth = (struct roce_bth *)buf;
 	unsigned int hlen = sizeof(*bth);
 
-	if (pkt->udph->dest != htons(ROCE_V2_UDP_DPORT))
-		return 0;
-
 	if (len < hlen)
 		return -1;
 
-	pkt->ptype = PKT_TYPE_ROCE;
-	pkt->roce_bth = bth;
+	if (pkt->udph->dest == htons(ROCE_V2_UDP_DPORT)) {
+		pkt->ptype = PKT_TYPE_ROCE;
+		pkt->roce_bth = bth;
+	}
 
-	return 0;
+	len -= hlen;
+
+	return len;
 }
 
 static int parse_udp(struct pkt *pkt, unsigned char *buf, unsigned int len)
@@ -345,7 +339,7 @@ static int pkt_parse(struct pkt *pkt)
 	unsigned int hlen = sizeof(*eth);
 	unsigned int len = pkt->len;
 	__be16 h_proto;
-	int err = 0;
+	int rc = 0;
 
 	if (len < hlen) {
 		log_error("Invalid pkt - no ethernet header\n");
@@ -365,17 +359,42 @@ static int pkt_parse(struct pkt *pkt)
 
 	switch (ntohs(h_proto)) {
 	case ETH_P_IP:
-		err = parse_ipv4(pkt, buf, len);
+		rc = parse_ipv4(pkt, buf, len);
 		break;
 	case ETH_P_IPV6:
-		err = parse_ipv6(pkt, buf, len);
+		rc = parse_ipv6(pkt, buf, len);
 		break;
 	}
 
-	return err;
+	if (rc > 0) {
+		pkt->payload = pkt->data + rc;
+		rc = 0;
+	}
+
+	return rc;
 }
 
-static struct pkt *pkt_alloc(unsigned int max_len)
+struct pkt *pkt_copy(struct pkt *pkt_in)
+{
+	struct pkt *pkt;
+
+	pkt = calloc(1, sizeof(*pkt));
+	if (pkt) {
+		*pkt = *pkt_in;
+
+		pkt->data = calloc(1, pkt_in->alloc_len);
+		if (!pkt->data) {
+			free(pkt);
+			return NULL;
+		}
+
+		memcpy(pkt->data, pkt_in->data, pkt_in->len);
+	}
+
+	return pkt;
+}
+
+struct pkt *pkt_alloc(unsigned int max_len)
 {
 	struct pkt *pkt;
 
@@ -477,6 +496,11 @@ struct roce_bth *pkt_roce_bth(struct pkt *pkt)
 struct enf_bth *pkt_motcp_bth(struct pkt *pkt)
 {
 	return pkt->bth;
+}
+
+unsigned char *pkt_payload(struct pkt *pkt)
+{
+	return pkt->payload;
 }
 
 void pkt_set_fd_out(struct pkt *pkt, int fd)

@@ -1,6 +1,6 @@
-/* Receive packet from one tap device and forward to another
- *
- * David Ahern <dsahern@gmail.com>
+/* Receive packet from one tap device and forward to another allowing
+ * test cases to make modifications to the packets or packet order
+ * including dropping packets.
  */
 
 #define _GNU_SOURCE
@@ -23,7 +23,7 @@
 #include <errno.h>
 
 #include "pkt_util.h"
-#include "pkt_test.h"
+#include "roce_test.h"
 #include "logging.h"
 
 #define PATH_NET_TUN "/dev/net/tun"

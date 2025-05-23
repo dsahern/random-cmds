@@ -1,5 +1,5 @@
-#ifndef _TESTS_H_
-#define _TESTS_H_
+#ifndef _ROCE_TEST_H_
+#define _ROCE_TEST_H_
 
 #include "pkt_util.h"
 
