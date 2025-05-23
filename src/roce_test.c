@@ -137,6 +137,11 @@ void roce_test(struct pkt *pkt, struct pkt *pkt_out[64], unsigned int *outlen)
 		if (qp->pkt_hold) {
 			pkt_out[1] = qp->pkt_hold;
 			*outlen = 2;
+
+			/* duplicate MIDDLE packet and send it twice */
+			pkt_out[2] = pkt_copy(qp->pkt_hold);
+			if (pkt_out[2])
+				*outlen = 3;
 		}
 		qp->pkt_hold = NULL;
 		qp->last_pkt_reversed = true;
