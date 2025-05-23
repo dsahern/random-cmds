@@ -86,8 +86,6 @@ void roce_test(struct pkt *pkt, struct pkt *pkt_out[64], unsigned int *outlen)
 	if (!pkt_is_roce(pkt))
 		goto send_pkt;
 
-	pkt_print(pkt);
-
 	bth = pkt_roce_bth(pkt);
 
 	qpn = bth_qpn(bth);
@@ -102,11 +100,11 @@ void roce_test(struct pkt *pkt, struct pkt *pkt_out[64], unsigned int *outlen)
 		if (!qp->psn_msg_start || psn > qp->psn_msg_start) {
 			qp->msg_num++;
 			qp->psn_msg_start = psn;
-			log_msg("msn %u at psn %u\n", qp->msg_num, psn);
+			log_debug("msn %u at psn %u\n", qp->msg_num, psn);
 		}
 
 		if (qp->msg_num == 2 && !qp->first_pkt_dropped) {
-			log_msg("Dropping packet with FIRST set\n");
+			log_debug("Dropping packet with FIRST set\n");
 			qp->first_pkt_dropped = true;
 			pkt_free(pkt);
 			return;
@@ -119,9 +117,9 @@ void roce_test(struct pkt *pkt, struct pkt *pkt_out[64], unsigned int *outlen)
 		    qp->msg_num != 4)
 			break;
 
-		log_msg("Holding MIDDLE packet\n");
+		log_debug("Holding MIDDLE packet\n");
 		if (qp->pkt_hold) {
-			log_msg("Sending prior MIDDLE packet\n");
+			log_debug("Sending prior MIDDLE packet\n");
 			pkt_out[0] = qp->pkt_hold;
 			*outlen = 1;
 		}
@@ -133,7 +131,7 @@ void roce_test(struct pkt *pkt, struct pkt *pkt_out[64], unsigned int *outlen)
 		    qp->msg_num != 4)
 			break;
 
-		log_msg("Reversing LAST packet and previous MIDDLE packet\n");
+		log_debug("Reversing LAST packet and previous MIDDLE packet\n");
 		pkt_out[0] = pkt;
 		*outlen = 1;
 		if (qp->pkt_hold) {
