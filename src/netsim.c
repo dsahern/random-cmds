@@ -79,9 +79,15 @@ static int do_fwd(int fd_r, int fd_w, const char *desc)
 
 		pkt_set_fd_out(pkt, fd_w);
 
+		if (verbose)
+			pkt_print(pkt, "packet in");
+
 		roce_test(pkt, pkt_out, &outlen);
 
 		for (i = 0; i < outlen; ++i) {
+			if (verbose)
+				pkt_print(pkt_out[i], "packet out");
+
 			if (pkt_write_and_release(pkt_out[i]))
 				return -errno;
 		}
@@ -90,21 +96,45 @@ static int do_fwd(int fd_r, int fd_w, const char *desc)
 	return 0;
 }
 
+static void usage(void)
+{
+        log_error("netsim OPTS tap1 tap2:\n\n");
+        log_error("options:\n");
+        log_error("       -v        verbose mode\n");
+        log_error("\n");
+}
+
+#define GETOPT_STR "v"
+
 int main(int argc, char *argv[])
 {
 	int fd_tap1, fd_tap2, max_fd;
 	fd_set rfds;
+	int rc;
 
-	if (argc != 3) {
-		log_error("usage: tap_fwd <tap1> <tap2>\n");
+	extern char *optarg;
+
+	while ((rc = getopt(argc, argv, GETOPT_STR)) != -1) {
+		switch (rc) {
+		case 'v':
+			verbose++;
+			break;
+		default:
+			usage();
+			return 1;
+		}
+	}
+
+	if (optind + 2 > argc) {
+		usage();
 		return 1;
 	}
 
-	fd_tap1 = tap_open(argv[1]);
+	fd_tap1 = tap_open(argv[optind]);
 	if (fd_tap1 < 0)
 		return 1;
 
-	fd_tap2 = tap_open(argv[2]);
+	fd_tap2 = tap_open(argv[optind + 1]);
 	if (fd_tap2 < 0)
 		return 1;
 
