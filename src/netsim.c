@@ -97,6 +97,43 @@ static int do_fwd(int fd_r, int fd_w, const char *desc)
 	return 0;
 }
 
+static void pkt_loop(int fd_tap1, int fd_tap2)
+{
+	int max_fd = (fd_tap2 > fd_tap1) ? fd_tap2 : fd_tap1;
+
+	max_fd++;
+
+	while (!done) {
+		fd_set rfds;
+		int rc;
+
+		FD_ZERO(&rfds);
+		FD_SET(fd_tap1, &rfds);
+		FD_SET(fd_tap2, &rfds);
+
+		rc = select(max_fd, &rfds, NULL, NULL, NULL);
+		if (rc == 0)
+			break;
+
+		if (rc < 0) {
+			if (errno == EINTR)
+				continue;
+			log_err_errno("select failed");
+			break;
+		}
+
+		if (FD_ISSET(fd_tap1, &rfds)) {
+			if (do_fwd(fd_tap1, fd_tap2, "tap1 to 2"))
+				break;
+		}
+
+		if (FD_ISSET(fd_tap2, &rfds)) {
+			if (do_fwd(fd_tap2, fd_tap1, "tap2 to 1"))
+				break;
+		}
+	}
+}
+
 static void sighdlr(int signo)
 {
 	done = true;
@@ -114,8 +151,7 @@ static void usage(void)
 
 int main(int argc, char *argv[])
 {
-	int fd_tap1, fd_tap2, max_fd;
-	fd_set rfds;
+	int fd_tap1, fd_tap2;
 	int rc;
 
 	extern char *optarg;
@@ -148,37 +184,7 @@ int main(int argc, char *argv[])
 	if (fd_tap2 < 0)
 		return 1;
 
-	max_fd = (fd_tap2 > fd_tap1) ? fd_tap2 : fd_tap1;
-	max_fd++;
-
-	while (!done) {
-		int rc;
-
-		FD_ZERO(&rfds);
-		FD_SET(fd_tap1, &rfds);
-		FD_SET(fd_tap2, &rfds);
-
-		rc = select(max_fd, &rfds, NULL, NULL, NULL);
-		if (rc == 0)
-			break;
-
-		if (rc < 0) {
-			if (errno == EINTR)
-				continue;
-			log_err_errno("select failed");
-			break;
-		}
-
-		if (FD_ISSET(fd_tap1, &rfds)) {
-			if (do_fwd(fd_tap1, fd_tap2, "tap1 to 2"))
-				break;
-		}
-
-		if (FD_ISSET(fd_tap2, &rfds)) {
-			if (do_fwd(fd_tap2, fd_tap1, "tap2 to 1"))
-				break;
-		}
-	}
+	pkt_loop(fd_tap1, fd_tap2);
 
 	close(fd_tap1);
 	close(fd_tap2);
