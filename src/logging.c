@@ -8,6 +8,8 @@
 
 #include "logging.h"
 
+unsigned int verbose;
+
 void log_error(const char *format, ...)
 {
 	va_list args;
@@ -15,8 +17,6 @@ void log_error(const char *format, ...)
 	va_start(args, format);
 	vfprintf(stderr, format, args);
 	va_end(args);
-
-	return;
 }
 
 void log_msg(const char *format, ...)
@@ -26,8 +26,6 @@ void log_msg(const char *format, ...)
 	va_start(args, format);
 	vfprintf(stdout, format, args);
 	va_end(args);
-
-	return;
 }
 
 void log_err_errno(const char *format, ...)
@@ -39,4 +37,15 @@ void log_err_errno(const char *format, ...)
 	va_end(args);
 
 	fprintf(stderr, ": %d: %s\n", errno, strerror(errno));
+}
+
+void log_debug(const char *format, ...)
+{
+	va_list args;
+
+	if (verbose) {
+		va_start(args, format);
+		vfprintf(stdout, format, args);
+		va_end(args);
+	}
 }
