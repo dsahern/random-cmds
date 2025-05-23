@@ -13,6 +13,7 @@
 #include <fcntl.h>
 #include <limits.h>
 #include <sched.h>
+#include <signal.h>
 #include <string.h>
 #include <stdarg.h>
 #include <stdbool.h>
@@ -96,6 +97,11 @@ static int do_fwd(int fd_r, int fd_w, const char *desc)
 	return 0;
 }
 
+static void sighdlr(int signo)
+{
+	done = true;
+}
+
 static void usage(void)
 {
         log_error("netsim OPTS tap1 tap2:\n\n");
@@ -129,6 +135,10 @@ int main(int argc, char *argv[])
 		usage();
 		return 1;
 	}
+
+	signal(SIGINT, sighdlr);
+	signal(SIGTERM, sighdlr);
+	signal(SIGHUP, sighdlr);
 
 	fd_tap1 = tap_open(argv[optind]);
 	if (fd_tap1 < 0)
@@ -172,5 +182,6 @@ int main(int argc, char *argv[])
 
 	close(fd_tap1);
 	close(fd_tap2);
+
 	return 0;
 }
