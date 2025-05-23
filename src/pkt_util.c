@@ -168,7 +168,7 @@ void pkt_print(const struct pkt *pkt, const char *desc)
 {
 	timestamp();
 
-	printf("%s fd %d", desc, pkt->fd_in);
+	printf(" %s fd %d", desc, pkt->fd_in);
 	if (pkt->iph)
 		print_ipv4(pkt);
 	else if (pkt->ip6h)
