@@ -81,7 +81,7 @@ static int do_fwd(int fd_r, int fd_w, const char *desc)
 		pkt_set_fd_out(pkt, fd_w);
 
 		if (verbose)
-			pkt_print(pkt, "packet in");
+			pkt_print(pkt, "packet in ");
 
 		roce_test(pkt, pkt_out, &outlen);
 

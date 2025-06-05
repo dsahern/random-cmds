@@ -41,10 +41,12 @@ CMDS += $(BINDIR)tap_fwd
 CMDS += $(BINDIR)cpumon
 CMDS += $(BINDIR)nettest
 CMDS += $(BINDIR)pkt-check
+CMDS += $(BINDIR)netsim
 
 COMMON += $(OBJDIR)logging.o
 COMMON += $(OBJDIR)str_utils.o
 COMMON += $(OBJDIR)raw_input.o
+COMMON += $(OBJDIR)pkt_util.o
 
 all: build $(CMDS)
 
@@ -63,11 +65,11 @@ $(BINDIR)pktgen: $(OBJDIR)pktgen.o $(OBJDIR)tap.o $(COMMON)
 $(BINDIR)pkt-check: $(OBJDIR)pkt-check.o
 	$(QUIET_LINK)$(CC) $^ -o $@ -lpcap
 
-$(BINDIR)pkt-test: $(OBJDIR)pkt_test.o $$(OBJDIR)pkt_util.o (OBJDIR)roce_test.o $(COMMON)
-	$(QUIET_LINK)$(CC) $(LDFLAGS) $^ -o $@
-
 $(BINDIR)tap_%: $(OBJDIR)tap_%.o $(OBJDIR)tap.o $(OBJDIR)packet.o $(COMMON)
 	$(QUIET_LINK)$(CC) $(LDFLAGS) $^ -o $@ -lpthread
+
+$(BINDIR)netsim: $(OBJDIR)netsim.o $(OBJDIR)roce_test.o $(COMMON)
+	$(QUIET_LINK)$(CC) $(LDFLAGS) $^ -o $@
 
 clean:
 	@rm -rf $(OBJDIR) $(BINDIR)
