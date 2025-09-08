@@ -30,7 +30,7 @@ BINDIR = bin/
 endif
 
 CC = gcc
-CFLAGS = -O2 -g -Wall
+CFLAGS = -O2 -g -Wall $(LOCAL_CFLAGS)
 LDFLAGS = -static
 INCLUDES = -I. -Iinclude/uapi
 
@@ -42,11 +42,14 @@ CMDS += $(BINDIR)cpumon
 CMDS += $(BINDIR)nettest
 CMDS += $(BINDIR)pkt-check
 CMDS += $(BINDIR)netsim
+CMDS += $(BINDIR)ib_cm
 
 COMMON += $(OBJDIR)logging.o
 COMMON += $(OBJDIR)str_utils.o
 COMMON += $(OBJDIR)raw_input.o
 COMMON += $(OBJDIR)pkt_util.o
+
+$(shell mkdir -p $(OBJDIR) $(BINDIR))
 
 all: build $(CMDS)
 
@@ -70,6 +73,9 @@ $(BINDIR)tap_%: $(OBJDIR)tap_%.o $(OBJDIR)tap.o $(OBJDIR)packet.o $(COMMON)
 
 $(BINDIR)netsim: $(OBJDIR)netsim.o $(OBJDIR)roce_test.o $(COMMON)
 	$(QUIET_LINK)$(CC) $(LDFLAGS) $^ -o $@
+
+$(BINDIR)ib_cm: $(OBJDIR)ib_cm.o $(COMMON)
+	$(QUIET_LINK)$(CC) $(LOCAL_LDFLAGS) $^ -o $@ -lrdmacm -libverbs
 
 clean:
 	@rm -rf $(OBJDIR) $(BINDIR)
