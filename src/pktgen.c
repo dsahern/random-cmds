@@ -1443,8 +1443,9 @@ static void gen_packets(struct opts *opts)
 		if (opts->nmsgs && (sent_count >= opts->nmsgs))
 			break;
 
-		printf("sent %d of %d; pause_count %d delay %d\n",
-			sent_count, opts->nmsgs, opts->pause_count, opts->pause_delay);
+		if (debug)
+			printf("sent %d of %d; pause_count %d delay %d\n",
+			       sent_count, opts->nmsgs, opts->pause_count, opts->pause_delay);
 
 		/* take a breather so as to not overwhelm the netdevice
 		 * (overrun stat)
