@@ -43,6 +43,7 @@ CMDS += $(BINDIR)nettest
 CMDS += $(BINDIR)pkt-check
 CMDS += $(BINDIR)netsim
 CMDS += $(BINDIR)ib_cm
+CMDS += $(BINDIR)nccl_topo
 
 COMMON += $(OBJDIR)logging.o
 COMMON += $(OBJDIR)str_utils.o
@@ -76,6 +77,9 @@ $(BINDIR)netsim: $(OBJDIR)netsim.o $(OBJDIR)roce_test.o $(COMMON)
 
 $(BINDIR)ib_cm: $(OBJDIR)ib_cm.o $(COMMON)
 	$(QUIET_LINK)$(CC) $(LOCAL_LDFLAGS) $^ -o $@ -lrdmacm -libverbs
+
+$(BINDIR)nccl_topo: nccl-topo.cc
+	$(QUIET_LINK)$(CPP) -g -Wall $^ -o $@ -lnccl -lcudart
 
 clean:
 	@rm -rf $(OBJDIR) $(BINDIR)
