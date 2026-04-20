@@ -4,7 +4,13 @@
 # command to enable SFs has already been run.
 
 # need new devlink
-PATH=/home/nvidia/dahern/bin:$PATH
+PATH=/home/dahern/bin:$PATH
+
+if [ "$(devlink -V)" = "devlink utility, iproute2-6.1.0" ];
+then
+	echo "newer devlink is needed"
+	exit 1
+fi
 
 function printhelp
 {
@@ -41,7 +47,7 @@ FNUM=$(echo ${PDEV} | awk -F ':' '{print $3}')
 FNUM=$(printf "%02x" ${FNUM//*\./})
 
 SFOCT=$(printf "%02x" ${SFNUM})
-MAC=01:12:34:${DEVNUM}:${FNUM}:${SFOCT}
+MAC=00:12:34:${DEVNUM}:${FNUM}:${SFOCT}
 
 PDEV=pci/${PDEV}
 
@@ -79,3 +85,7 @@ devlink dev param set ${SF_ADEV} name enable_eth value 1 cmode driverinit
 devlink dev param set ${SF_ADEV} name enable_rdma value 1 cmode driverinit
 devlink dev param set ${SF_ADEV} name enable_roce value 1 cmode driverinit
 devlink dev reload ${SF_ADEV}
+
+echo "SF physical dev: $SF_PDEV"
+echo "SF aux dev: ${SF_ADEV}"
+echo "SF netdev representor: ${NDEV_REP}"
