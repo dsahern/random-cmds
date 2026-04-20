@@ -29,7 +29,7 @@ SFNUM=0
 while getopts :p:s:h o
 do
 	case $o in
-	p) PDEV=OPTARG;;
+	p) PDEV=$OPTARG;;
 	s) SFNUM=$OPTARG;;
 	h) printhelp;exit 0;;
 	*) printhelp;exit 1;;
@@ -41,7 +41,7 @@ FNUM=$(echo ${PDEV} | awk -F ':' '{print $3}')
 FNUM=$(printf "%02x" ${FNUM//*\./})
 
 SFOCT=$(printf "%02x" ${SFNUM})
-MAC=00:12:34:${DEVNUM}:${FNUM}:${SFOCT}
+MAC=01:12:34:${DEVNUM}:${FNUM}:${SFOCT}
 
 PDEV=pci/${PDEV}
 
